@@ -1,2 +1,2 @@
-java -Xms1024M -Xmx1024M -jar -DIReallyKnowWhatIAmDoingISwear craftbukkit.jar
+java -Xms4096M -Xmx4096M -jar -DIReallyKnowWhatIAmDoingISwear craftbukkit.jar
 PAUSE
