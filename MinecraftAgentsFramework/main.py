@@ -8,4 +8,4 @@ mc = Minecraft.create()
 # Interact with the Minecraft world
 mc.postToChat("Hello Minecraft World")
 pos = mc.player.getTilePos()
-mc.setBlock ( pos.x +3 , pos.y , pos.z , block.STONE.id)
+mc.setBlock(pos.x + 3, pos.y, pos.z, block.STONE.id)
