@@ -1,0 +1,63 @@
+[16:19:59] [Server thread/INFO]: Starting minecraft server version 1.12
+[16:19:59] [Server thread/INFO]: Loading properties
+[16:19:59] [Server thread/INFO]: Default game type: CREATIVE
+[16:19:59] [Server thread/INFO]: Generating keypair
+[16:19:59] [Server thread/INFO]: Starting Minecraft server on *:25565
+[16:19:59] [Server thread/INFO]: Using default channel type
+[16:20:00] [Server thread/INFO]: This server is running CraftBukkit version git-Bukkit-ed8c725 (MC: 1.12) (Implementing API version 1.12-R0.1-SNAPSHOT)
+[16:20:00] [Server thread/INFO]: [RaspberryJuice] Loading RaspberryJuice v1.10
+[16:20:00] [Server thread/WARN]: **** SERVER IS RUNNING IN OFFLINE/INSECURE MODE!
+[16:20:00] [Server thread/WARN]: The server will make no attempt to authenticate usernames. Beware.
+[16:20:00] [Server thread/WARN]: While this makes the game possible to play without internet access, it also opens up the ability for hackers to connect with any username they choose.
+[16:20:00] [Server thread/WARN]: To change this, set "online-mode" to "true" in the server.properties file.
+[16:20:00] [Server thread/INFO]: Preparing level "world"
+[16:20:01] [Server thread/INFO]: Preparing start region for level 0 (Seed: 5033244501802512733)
+[16:20:02] [Server thread/INFO]: Preparing spawn area: 22%
+[16:20:03] [Server thread/INFO]: Preparing spawn area: 47%
+[16:20:04] [Server thread/INFO]: Preparing spawn area: 81%
+[16:20:04] [Server thread/INFO]: Preparing start region for level 1 (Seed: 5033244501802512733)
+[16:20:05] [Server thread/INFO]: Preparing spawn area: 39%
+[16:20:06] [Server thread/INFO]: Preparing spawn area: 68%
+[16:20:07] [Server thread/INFO]: Preparing start region for level 2 (Seed: 5033244501802512733)
+[16:20:08] [Server thread/INFO]: [RaspberryJuice] Enabling RaspberryJuice v1.10
+[16:20:08] [Server thread/INFO]: [RaspberryJuice] Using port 4711
+[16:20:08] [Server thread/INFO]: [RaspberryJuice] Using ABSOLUTE locations
+[16:20:08] [Server thread/INFO]: [RaspberryJuice] Using BOTH clicks for hits
+[16:20:08] [Server thread/INFO]: [RaspberryJuice] ThreadListener Started
+[16:20:08] [Server thread/INFO]: Server permissions file permissions.yml is empty, ignoring it
+[16:20:08] [Server thread/INFO]: Done (8,284s)! For help, type "help" or "?"
+[16:21:42] [Server thread/INFO]: Delus3r[/127.0.0.1:52770] logged in with entity id 1487 at ([world]246.5, 64.0, -49.5)
+[16:22:50] [Thread-8/INFO]: [RaspberryJuice] Starting output thread!
+[16:22:50] [Thread-5/INFO]: [RaspberryJuice] Opened connection to/127.0.0.1:52777.
+[16:22:50] [Thread-7/INFO]: [RaspberryJuice] Starting input thread
+[16:22:50] [Server thread/INFO]: Hello Minecraft World[m
+[16:22:50] [Server thread/INFO]: [RaspberryJuice] Closed connection to/127.0.0.1:52777.
+[16:23:44] [Thread-5/INFO]: [RaspberryJuice] Opened connection to/127.0.0.1:52786.
+[16:23:44] [Thread-9/INFO]: [RaspberryJuice] Starting input thread
+[16:23:44] [Thread-10/INFO]: [RaspberryJuice] Starting output thread!
+[16:23:44] [Server thread/INFO]: Hello Minecraft World[m
+[16:23:44] [Server thread/INFO]: [RaspberryJuice] Closed connection to/127.0.0.1:52786.
+[17:02:48] [Thread-11/INFO]: [RaspberryJuice] Starting input thread
+[17:02:48] [Thread-5/INFO]: [RaspberryJuice] Opened connection to/127.0.0.1:60362.
+[17:02:48] [Thread-12/INFO]: [RaspberryJuice] Starting output thread!
+[17:02:48] [Server thread/INFO]: [RaspberryJuice] Closed connection to/127.0.0.1:60362.
+[17:03:05] [Thread-5/INFO]: [RaspberryJuice] Opened connection to/127.0.0.1:60372.
+[17:03:05] [Thread-14/INFO]: [RaspberryJuice] Starting output thread!
+[17:03:05] [Thread-13/INFO]: [RaspberryJuice] Starting input thread
+[17:03:05] [Server thread/INFO]: [RaspberryJuice] Closed connection to/127.0.0.1:60372.
+[17:03:33] [Thread-5/INFO]: [RaspberryJuice] Opened connection to/127.0.0.1:62173.
+[17:03:33] [Thread-16/INFO]: [RaspberryJuice] Starting output thread!
+[17:03:33] [Thread-15/INFO]: [RaspberryJuice] Starting input thread
+[17:03:33] [Server thread/INFO]: [RaspberryJuice] Closed connection to/127.0.0.1:62173.
+[17:03:53] [Thread-5/INFO]: [RaspberryJuice] Opened connection to/127.0.0.1:62184.
+[17:03:53] [Thread-17/INFO]: [RaspberryJuice] Starting input thread
+[17:03:53] [Thread-18/INFO]: [RaspberryJuice] Starting output thread!
+[17:03:54] [Server thread/INFO]: [RaspberryJuice] Closed connection to/127.0.0.1:62184.
+[17:04:25] [Thread-5/INFO]: [RaspberryJuice] Opened connection to/127.0.0.1:60091.
+[17:04:25] [Thread-20/INFO]: [RaspberryJuice] Starting output thread!
+[17:04:25] [Thread-19/INFO]: [RaspberryJuice] Starting input thread
+[17:04:25] [Server thread/INFO]: [RaspberryJuice] Closed connection to/127.0.0.1:60091.
+[17:07:10] [Thread-5/INFO]: [RaspberryJuice] Opened connection to/127.0.0.1:52094.
+[17:07:10] [Thread-22/INFO]: [RaspberryJuice] Starting output thread!
+[17:07:10] [Thread-21/INFO]: [RaspberryJuice] Starting input thread
+[17:07:10] [Server thread/INFO]: [RaspberryJuice] Closed connection to/127.0.0.1:52094.
