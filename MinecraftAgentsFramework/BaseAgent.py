@@ -12,11 +12,13 @@ class AgentState(Enum):
     ERROR = "ERROR"
 
 class BaseAgent:
-    def __init__(self):
+    def __init__(self, workspace):
         self.state: AgentState = AgentState.IDLE
         self.task: asyncio.Task = None
         self.should_stop = False
+        self.workspace = workspace
         self.args = {}
+        self.interrupt_event = asyncio.Event()
 
     @abstractmethod
     def perceive(self):
@@ -35,6 +37,7 @@ class BaseAgent:
 
     def set_state(self, new_state: AgentState):
         self.state = new_state
+        self.workspace.log_event("STATE_CHANGE", self.__class__.__name__, {"new_state": new_state.value})
     
     async def start(self, **kwargs):
         if self.task and not self.task.done():
@@ -43,57 +46,95 @@ class BaseAgent:
 
         self.args = kwargs
         self.should_stop = False
-        self.set_state(AgentState.RUNNING)
+        self.interrupt_event.clear()
+        self.set_state(AgentState.IDLE)
         self.task = asyncio.create_task(self.run_loop())
         print(f"Agent {self.__class__.__name__} (ID={id(self)}) started.")
 
-    async def stop(self):
+    def stop(self):
         self.should_stop = True
-
-        if self.task and self.task != asyncio.current_task():
-            await self.task
-        
+        self.interrupt_event.set()
         self.set_state(AgentState.STOPPED)
         print(f"Agent {self.__class__.__name__} (ID={id(self)}) stopped.")
 
-    async def pause(self):
+    def pause(self):
         self.set_state(AgentState.PAUSED)
+        self.interrupt_event.set()
         print(f"Agent {self.__class__.__name__} (ID={id(self)}) paused.")
 
-    async def resume(self):
+    def resume(self):
         if self.state == AgentState.PAUSED:
             self.set_state(AgentState.RUNNING)
+            self.interrupt_event.clear()
             print(f"Agent {self.__class__.__name__} (ID={id(self)}) resumed.")
-
-    async def update(self, **kwargs):
-        self.args.update(kwargs)
-        print(f"Agent {self.__class__.__name__} (ID={id(self)}) updated with options: {kwargs}.")
 
     async def run_loop(self):
         try:
-            while not self.should_stop:
+            while True:
+                pending_command = self.workspace.get_pending_command(self.__class__.__name__)
+                if pending_command:
+                     print(f"[{self.__class__.__name__}] Processing command: {pending_command}")
+                     self.handle_command(pending_command)
+ 
                 if self.state == AgentState.PAUSED:
                     await asyncio.sleep(0.1)
                     continue
 
                 if self.state in (AgentState.STOPPED, AgentState.ERROR):
-                    break
+                    await asyncio.sleep(1)
+                    continue
+                
+                if not self.args:
+                    if self.state != AgentState.IDLE:
+                        self.set_state(AgentState.IDLE)
+                    await asyncio.sleep(0.5)
+                    continue
+
+                if self.state != AgentState.RUNNING:
+                    self.set_state(AgentState.RUNNING)
 
                 self.perceive(**self.args)
-
-                self.decide()
-
-                action_message = await self.act()
+                self.decide(**self.args)
+                action_message = await self.act(**self.args)
 
                 if action_message is not None:
+                    self.workspace.post_message(action_message)
                     print(json.dumps(action_message, indent=4))
 
-                await asyncio.sleep(0)
+                await asyncio.sleep(1)
 
         except Exception as e:
             print(f"Agent {self.__class__.__name__} (ID={id(self)}) encountered an error: {e}")
+            self.workspace.log_event("ERROR", self.__class__.__name__, {"error": str(e)})
             self.set_state(AgentState.ERROR)
 
         finally:
-            if not self.should_stop:
-                await self.stop()
+            print(f"Agent {self.__class__.__name__} (ID={id(self)}) run_loop terminated.")
+    
+    def handle_command(self, command):
+        action = command.get("action")
+        
+        if action == "start":
+            self.should_stop = False
+            self.interrupt_event.clear()
+
+            self.args.update({
+                "x": command.get("x", 0),
+                "z": command.get("z", 0),
+                "range": command.get("range", 32)
+            })
+            
+            if self.state in (AgentState.STOPPED, AgentState.PAUSED):
+                self.set_state(AgentState.RUNNING)
+        elif action == "set":
+            if "range" in command:
+                 self.args["range"] = command["range"]
+        elif action == "stop":
+            self.stop()
+        elif action == "pause":
+            self.pause()
+        elif action == "resume":
+            self.resume()
+    
+    def handle_message(self, message):
+        pass

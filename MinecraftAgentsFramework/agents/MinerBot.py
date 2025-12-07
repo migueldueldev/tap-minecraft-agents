@@ -1,9 +1,9 @@
 from BaseAgent import BaseAgent
 
 class MinerBot(BaseAgent):
-    def __init__(self, mc):
+    def __init__(self, mc, workspace):
         self.mc = mc
-        super().__init__()
+        super().__init__(workspace)
 
     def perceive(self, **kwargs):
         pass

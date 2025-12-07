@@ -7,11 +7,15 @@ import asyncio
 import random
 
 class ExplorerBot(BaseAgent):
-    def __init__(self, mc):
+    def __init__(self, mc, workspace):
         self.mc = mc
-        super().__init__()
+        super().__init__(workspace)
 
-    def perceive(self, **kwargs):
+    def perceive(self, **kwargs):               
+        messages = self.workspace.get_messages_for(self.__class__.__name__)
+        for msg in messages:
+            self.handle_message(msg)
+
         self.x0 = kwargs.get("x", 0)
         self.z0 = kwargs.get("z", 0)
         self.area = kwargs.get("range", 32)
@@ -27,12 +31,13 @@ class ExplorerBot(BaseAgent):
                     heights[(x, z)] = y
         
         self.heights = heights
-        self.elevation_map = self.generate_elevation_map(heights)
-        self.flat_regions = self.identify_flat_regions(self.elevation_map)
         self.blocks = self.identify_blocks(heights)
         return heights
 
     def decide(self, **kwargs):
+        self.elevation_map = self.generate_elevation_map(self.heights)
+        self.flat_regions = self.identify_flat_regions(self.elevation_map)
+
         self.UNSTABLE_IDS = {
             block.WATER.id,
             block.WATER_STATIONARY.id,
@@ -44,7 +49,6 @@ class ExplorerBot(BaseAgent):
             block.SNOW.id,
             block.BEDROCK_INVISIBLE.id,
         }
-
         self.stable_regions = list(filter(self.is_region_stable, self.flat_regions))
         return self.stable_regions
 
@@ -113,22 +117,47 @@ class ExplorerBot(BaseAgent):
         used_coords = set()
 
         for y, coords in elevation_map.items():
-            coord_set = set(coords)
+            coord_set = set(coords)       
+            coords_sorted = sorted(coords, key=lambda c: (c[0] - self.x0)**2 + (c[1] - self.z0)**2)
             
-            for x, z in coords:
+            for x, z in coords_sorted:
                 if (x, z) not in used_coords:
-                    width = 1
-                    while (x + width, z) in coord_set and (x + width, z) not in used_coords:
-                        width += 1
+                    max_width = 1
+                    max_depth = 1
 
-                    depth = 1
-                    while all((x + dx, z + depth) in coord_set and (x + dx, z + depth) not in used_coords for dx in range(width)):
-                        depth += 1
+                    while (x + max_width, z) in coord_set and (x + max_width, z) not in used_coords:
+                        if all((x + max_width - dx - self.x0)**2 + (z - self.z0)**2 <= self.area**2 for dx in range(max_width + 1)):
+                            max_width += 1
+                        else:
+                            break
 
-                    if width >= 2 and depth >= 2:
-                        region = [(x + dx, z + dz) for dx in range(width) for dz in range(depth)]
-                        flat_regions.append({'y': y, 'blocks': region, 'width': width, 'depth': depth})
-                        used_coords.update(region)
+                    while all(
+                        (x + dx, z + max_depth) in coord_set and 
+                        (x + dx, z + max_depth) not in used_coords
+                        for dx in range(max_width)
+                    ):
+                        if all((x + dx - self.x0)**2 + (z + max_depth - self.z0)**2 <= self.area**2 for dx in range(max_width)):
+                            max_depth += 1
+                        else:
+                            break
+
+                    region_coords = [(x + dx, z + dz) for dx in range(max_width) for dz in range(max_depth)]
+                    
+                    region_coords_filtered = []
+                    for rx, rz in region_coords:
+                        dx = rx - self.x0
+                        dz = rz - self.z0
+                        if (dx**2 + dz**2) <= self.area**2:
+                            region_coords_filtered.append((rx, rz))
+                    
+                    if len(region_coords_filtered) >= 1:
+                        flat_regions.append({
+                            'y': y, 
+                            'blocks': region_coords_filtered, 
+                            'width': max_width, 
+                            'depth': max_depth
+                        })
+                        used_coords.update(region_coords_filtered)
 
         return flat_regions
     
@@ -164,18 +193,47 @@ class ExplorerBot(BaseAgent):
         return dict(id_name_pairs)
     
     async def show_region_blocks(self, regions_payload, duration=10):
-        original_blocks = {
-            (b['x'], r['y'], b['z']): self.blocks[(b['x'], r['y'], b['z'])]
-            for r in regions_payload
-            for b in r['blocks']
-        }
+        original_blocks = {} 
 
+        for r in regions_payload:
+            for b in r['blocks']:
+                x, y, z = b['x'], r['y'], b['z']
+                block_key = (x, y, z)
+                if block_key in self.blocks:
+                    original_blocks[block_key] = self.blocks[block_key]
+
+        color = random.randint(0, 15)
         for region in regions_payload:
-            color = random.randint(0, 15)
             for b in region['blocks']:
-                self.mc.setBlock(b['x'], region['y'] - 1, b['z'], block.WOOL.id, color)
+                x, z = b['x'], b['z']
+                
+                if (x, region['y'], z) in original_blocks:
+                    self.mc.setBlock(x, region['y'] - 1, z, block.WOOL.id, color)
 
-        await asyncio.sleep(duration)
+        start_time = asyncio.get_event_loop().time()
+        check_interval = 0.5
+        try:
+            while True:
+                elapsed = asyncio.get_event_loop().time() - start_time
+                if elapsed >= duration:
+                    break
 
-        for (x, y, z), b in original_blocks.items():
-            self.mc.setBlock(x, y - 1, z, b.id, b.data)
+                pending_command = self.workspace.get_pending_command(self.__class__.__name__)
+                if pending_command:
+                    self.handle_command(pending_command)
+                    if self.should_stop:
+                        break
+                
+                remaining = duration - elapsed
+                wait_time = min(check_interval, remaining)
+                if wait_time > 0:
+                    try:
+                        await asyncio.wait_for(self.interrupt_event.wait(), timeout=wait_time)
+                        break
+                    except asyncio.TimeoutError:
+                        pass
+
+        finally:
+            for (x, y, z), b in original_blocks.items():
+                self.mc.setBlock(x, y - 1, z, b.id, b.data)
+            self.interrupt_event.clear()

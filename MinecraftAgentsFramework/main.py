@@ -1,5 +1,6 @@
 # Import necessary modules
 from mcpi.minecraft import Minecraft
+from SharedWorkspace import SharedWorkspace
 import mcpi.block as block
 import pkgutil
 import importlib
@@ -9,6 +10,7 @@ from BaseAgent import BaseAgent
 
 # Connect to the Minecraft game
 mc = Minecraft.create()
+workspace = SharedWorkspace()
 
 agents_dir = os.path.join(os.path.dirname(__file__), "agents")
 for module in pkgutil.iter_modules([agents_dir]):
@@ -16,7 +18,7 @@ for module in pkgutil.iter_modules([agents_dir]):
 
 instances = []
 for subclass in BaseAgent.__subclasses__():
-    obj = subclass(mc)
+    obj = subclass(mc, workspace)
     if isinstance(obj, BaseAgent):
         instances.append(obj)
 
@@ -24,7 +26,7 @@ print(instances)
 
 async def parse_message(message):
     components = message.split(" ")
-    if (len(components) >= 2):
+    if len(components) >= 2:
         agent = components[0]
         action = components[1]
         parameters = components[2:]
@@ -67,35 +69,34 @@ async def parse_message(message):
                                 else: return mc.postToChat(f'Invalid parameter format in command "{message}"')
 
                             # start here
-                            explorer_agent = await find_explorer_bot()
-                            if explorer_agent is not None:
-                                await explorer_agent.start(x=x, z=z, range=range)
-                                mc.postToChat("Explorer agent started")
-                            else: mc.postToChat("Explorer agent not found")
+                            workspace.post_command("ExplorerBot", {
+                                "action": "start",
+                                "x": x,
+                                "z": z,
+                                "range": range
+                            })
+                            mc.postToChat("Command queued for ExplorerBot")
                         except ValueError:
                             mc.postToChat(f'Invalid parameter format in command "{message}"')
                     else: mc.postToChat(f'Insufficient parameters in command "{message}"')
                 elif action == "stop":
-                    explorer_agent = await find_explorer_bot()
-                    if explorer_agent:
-                        await explorer_agent.stop()
-                        mc.postToChat("Explorer agent stopped")
-                    else: mc.postToChat("Explorer agent not found")
+                    workspace.post_command("ExplorerBot", {
+                        "action": "stop"
+                    })
+                    mc.postToChat("Command queued for ExplorerBot")
                 elif action == "set":
                     if len(parameters) == 2:
                         if parameters[0] == "range":
                             try:
                                 range = int(parameters[1])
+
+                                workspace.post_command("ExplorerBot", {
+                                "action": "set",
+                                "range": range
+                                })
+                                mc.postToChat(f'Command queued for ExplorerBot')
                             except ValueError:
-                                mc.postToChat(f'Invalid parameter format in command "{message}"')
-
-                            # set here
-                            explorer_agent = await find_explorer_bot()
-                            if explorer_agent:
-                                await explorer_agent.update(range=range)
-                                mc.postToChat(f'Explorer agent range set to {range}.')
-                            else: mc.postToChat("Explorer agent not found")
-
+                                mc.postToChat(f'Invalid number format in command "{message}"')
                         else: mc.postToChat(f'Invalid parameter format in command "{message}"')
                     else: mc.postToChat(f'Insufficient parameters in command "{message}"')
                 elif action == "status":
@@ -111,7 +112,30 @@ async def parse_message(message):
             else: mc.postToChat(f'Action "{action}" in command "{message}" is not recognized')
         elif agent == "builder":
             if action in ["plan", "bom", "build", "pause", "resume"]:
-                pass
+                    if action == "plan":
+                        if len(parameters) >= 2:
+                            try:
+                                x = parameters[0].split("=")
+                                if (len(x) == 2 and x[0] == "x"):
+                                    x = int(x[1])
+                                else: return mc.postToChat(f'Invalid parameter format in command "{message}"')
+
+                                z = parameters[1].split("=")
+                                if (len(z) == 2 and z[0] == "z"):
+                                    z = int(z[1])
+                                else: return mc.postToChat(f'Invalid parameter format in command "{message}"')
+                                # list plan here
+                            except ValueError:
+                                mc.postToChat(f'Invalid parameter format in command "{message}"')
+                        else: mc.postToChat(f'Insufficient parameters in command "{message}"')
+                    elif action == "bom":
+                        pass
+                    elif action == "build":
+                        pass
+                    elif action == "pause":
+                        pass
+                    elif action == "resume":
+                        pass
             else: mc.postToChat(f'Action "{action}" in command "{message}" is not recognized')
         elif agent == "workflow":
             if action == "run":
@@ -122,7 +146,7 @@ async def parse_message(message):
     else:
         print("Message is not a command")
 
-async def find_explorer_bot():
+def find_explorer_bot():
     for instance in instances:
         if instance.__class__.__name__ == "ExplorerBot":
             return instance
@@ -137,6 +161,12 @@ async def read_chat_events():
         await asyncio.sleep(1)
 
 async def main():
+    explorer_agent = find_explorer_bot()
+    if explorer_agent:
+        await explorer_agent.start()
+    else:
+        print("ExplorerBot instance not found")
+        
     asyncio.create_task(read_chat_events())
     print("Ready")
 
