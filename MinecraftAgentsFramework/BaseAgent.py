@@ -1,4 +1,5 @@
 from abc import abstractmethod
+import datetime
 from enum import Enum
 import asyncio
 import json
@@ -37,7 +38,8 @@ class BaseAgent:
 
     def set_state(self, new_state: AgentState):
         self.state = new_state
-        self.workspace.log_event("STATE_CHANGE", self.__class__.__name__, {"new_state": new_state.value})
+        timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"
+        self.workspace.log_event("STATE_CHANGE", self.__class__.__name__, {"new_state": new_state.value, "timestamp": timestamp})
     
     async def start(self, **kwargs):
         if self.task and not self.task.done():
@@ -72,10 +74,13 @@ class BaseAgent:
         try:
             while True:
                 pending_command = self.workspace.get_pending_command(self.__class__.__name__)
+                unhandled_command = None
                 if pending_command:
-                     print(f"[{self.__class__.__name__}] Processing command: {pending_command}")
-                     self.handle_command(pending_command)
- 
+                    print(f"[{self.__class__.__name__}] Processing command: {pending_command}")
+                    handled = self.handle_command(pending_command)
+                    if not handled:
+                        unhandled_command = pending_command
+
                 if self.state == AgentState.PAUSED:
                     await asyncio.sleep(0.1)
                     continue
@@ -92,8 +97,8 @@ class BaseAgent:
 
                 if self.state != AgentState.RUNNING:
                     self.set_state(AgentState.RUNNING)
-
-                self.perceive(**self.args)
+                
+                self.perceive(command=unhandled_command, **self.args)
                 self.decide(**self.args)
                 action_message = await self.act(**self.args)
 
@@ -102,7 +107,6 @@ class BaseAgent:
                     print(json.dumps(action_message, indent=4))
 
                 await asyncio.sleep(1)
-
         except Exception as e:
             print(f"Agent {self.__class__.__name__} (ID={id(self)}) encountered an error: {e}")
             self.workspace.log_event("ERROR", self.__class__.__name__, {"error": str(e)})
@@ -113,28 +117,23 @@ class BaseAgent:
     
     def handle_command(self, command):
         action = command.get("action")
-        
         if action == "start":
             self.should_stop = False
             self.interrupt_event.clear()
+            self.args = command.get("parameters", {})
 
-            self.args.update({
-                "x": command.get("x", 0),
-                "z": command.get("z", 0),
-                "range": command.get("range", 32)
-            })
-            
-            if self.state in (AgentState.STOPPED, AgentState.PAUSED):
+            if self.state in (AgentState.STOPPED, AgentState.PAUSED, AgentState.IDLE):
                 self.set_state(AgentState.RUNNING)
-        elif action == "set":
-            if "range" in command:
-                 self.args["range"] = command["range"]
+            return True
         elif action == "stop":
             self.stop()
+            return True
         elif action == "pause":
             self.pause()
+            return True
         elif action == "resume":
             self.resume()
-    
+            return True
+        return False
     def handle_message(self, message):
         pass

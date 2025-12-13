@@ -1,4 +1,4 @@
-from BaseAgent import BaseAgent
+from BaseAgent import BaseAgent, AgentState
 from collections import defaultdict
 from functools import reduce
 import mcpi.block as block
@@ -10,11 +10,29 @@ class ExplorerBot(BaseAgent):
     def __init__(self, mc, workspace):
         self.mc = mc
         super().__init__(workspace)
+        self.display_task = None
 
-    def perceive(self, **kwargs):               
+    def perceive(self, command=None, **kwargs):
         messages = self.workspace.get_messages_for(self.__class__.__name__)
         for msg in messages:
             self.handle_message(msg)
+        
+        if command:
+            action = command.get("action")
+            if action == "set":
+                parameters = command.get("parameters", {})
+                if "range" in parameters:
+                    try:
+                        range_val = int(parameters["range"])
+                        if range_val > 0:
+                            self.args["range"] = range_val
+                            print(f"[PERCEIVE] Updated range={range_val}")
+                        else:
+                            print(f"[PERCEIVE] Invalid range: {range_val}")
+                    except (ValueError, TypeError) as e:
+                        print(f"[PERCEIVE] Error parsing range: {e}")
+                else:
+                    print(f"[PERCEIVE] set command missing range parameter")
 
         self.x0 = kwargs.get("x", 0)
         self.z0 = kwargs.get("z", 0)
@@ -99,11 +117,24 @@ class ExplorerBot(BaseAgent):
                 }
             }
 
-            await self.show_region_blocks(regions_payload, duration=10)
+            if self.display_task is not None and not self.display_task.done():
+                self.display_task.cancel()
+                try:
+                    await self.display_task
+                except asyncio.CancelledError:
+                    pass
+            
+            self.display_task = asyncio.create_task(self.show_region_blocks(regions_payload, duration=10))
 
             return message
         else: return None
 
+    def stop(self):
+        
+        if self.display_task is not None and not self.display_task.done():
+            self.display_task.cancel()
+        super().stop()
+        
     def generate_elevation_map(self, heights):
         elevation_map = defaultdict(list)
 
@@ -200,40 +231,30 @@ class ExplorerBot(BaseAgent):
                 x, y, z = b['x'], r['y'], b['z']
                 block_key = (x, y, z)
                 if block_key in self.blocks:
-                    original_blocks[block_key] = self.blocks[block_key]
+                    original_block = self.mc.getBlockWithData(x, y - 1, z)
+                    original_blocks[block_key] = original_block
 
-        color = random.randint(0, 15)
         for region in regions_payload:
+            color = random.randint(0, 15)
             for b in region['blocks']:
                 x, z = b['x'], b['z']
                 
                 if (x, region['y'], z) in original_blocks:
                     self.mc.setBlock(x, region['y'] - 1, z, block.WOOL.id, color)
 
-        start_time = asyncio.get_event_loop().time()
-        check_interval = 0.5
+        print(f"[VISUALIZE] Showing {len(original_blocks)} blocks for {duration}s...")
+        
+        # start_time = asyncio.get_event_loop().time()
         try:
-            while True:
-                elapsed = asyncio.get_event_loop().time() - start_time
-                if elapsed >= duration:
-                    break
-
-                pending_command = self.workspace.get_pending_command(self.__class__.__name__)
-                if pending_command:
-                    self.handle_command(pending_command)
-                    if self.should_stop:
-                        break
-                
-                remaining = duration - elapsed
-                wait_time = min(check_interval, remaining)
-                if wait_time > 0:
-                    try:
-                        await asyncio.wait_for(self.interrupt_event.wait(), timeout=wait_time)
-                        break
-                    except asyncio.TimeoutError:
-                        pass
-
+            elapsed = 0
+            check_interval = 0.53
+            while elapsed < duration:
+                await asyncio.sleep(check_interval)
+                elapsed += check_interval
+        except asyncio.CancelledError:
+            print(f"[VISUALIZE] Visualization cancelled, restoring blocks...")
         finally:
             for (x, y, z), b in original_blocks.items():
                 self.mc.setBlock(x, y - 1, z, b.id, b.data)
-            self.interrupt_event.clear()
+            # self.interrupt_event.clear()
+            print(f"[VISUALIZE] Restored {len(original_blocks)} blocks")

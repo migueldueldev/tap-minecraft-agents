@@ -1,6 +1,6 @@
 from collections import deque
 import json
-from datetime import datetime
+import datetime
 
 class SharedWorkspace:
     def __init__(self):
@@ -36,7 +36,7 @@ class SharedWorkspace:
         return messages
     
     def log_event(self, event_type, agent, data):
-        timestamp = datetime.now().isoformat()
+        timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"
         log_entry = {
             "timestamp": timestamp,
             "event": event_type,
@@ -47,7 +47,7 @@ class SharedWorkspace:
             f.write(json.dumps(log_entry) + "\n")
     
     def save_final_state(self, agents):
-        timestamp = datetime.now().isoformat()
+        timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"
         final_state = {
             "timestamp": timestamp,
             "event": "SYSTEM_SHUTDOWN",
