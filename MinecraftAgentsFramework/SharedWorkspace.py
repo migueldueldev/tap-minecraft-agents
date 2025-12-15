@@ -1,39 +1,31 @@
-from collections import deque
 import json
 import datetime
 
 class SharedWorkspace:
     def __init__(self):
-        self.command_queues = {}  # {agent_name: deque([commands])}
-        self.message_queue = deque()  # mensajes entre bots
+        self.observers = []
         self.log_file = "agent_execution.log"
     
+    def register_observer(self, observer):
+        if observer not in self.observers:
+            self.observers.append(observer)
+            
+    def remove_observer(self, observer):
+        if observer in self.observers:
+            self.observers.remove(observer)
+
     def post_command(self, agent_name, command_data):
-        if agent_name not in self.command_queues:
-            self.command_queues[agent_name] = deque()
-        self.command_queues[agent_name].append(command_data)
         self.log_event("COMMAND_POSTED", agent_name, command_data)
-    
-    def get_pending_command(self, agent_name):
-        queue = self.command_queues.get(agent_name)
-        if queue and len(queue) > 0:
-            cmd = queue.popleft()
-            self.log_event("COMMAND_CONSUMED", agent_name, cmd)
-            return cmd
-        return None
+        for observer in self.observers:
+            if observer.__class__.__name__ == agent_name:
+                observer.receive_command(command_data)
     
     def post_message(self, message):
-        self.message_queue.append(message)
         self.log_event("MESSAGE_POSTED", message.get('source'), message)
-    
-    def get_messages_for(self, target):
-        messages = [m for m in self.message_queue if m.get('target') == target]
-        
-        # remover mensajes consumidos
-        self.message_queue = deque([m for m in self.message_queue if m.get('target') != target])
-        if messages:
-            self.log_event("MESSAGES_CONSUMED", target, {"count": len(messages)})
-        return messages
+        target = message.get('target')
+        for observer in self.observers:
+            if observer.__class__.__name__ == target:
+                observer.receive_message(message)
     
     def log_event(self, event_type, agent, data):
         timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"

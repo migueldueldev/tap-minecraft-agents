@@ -3,6 +3,8 @@ import datetime
 from enum import Enum
 import asyncio
 import json
+import threading
+from collections import deque
 
 class AgentState(Enum):
     IDLE = "IDLE"
@@ -18,19 +20,42 @@ class BaseAgent:
         self.task: asyncio.Task = None
         self.should_stop = False
         self.workspace = workspace
+        self.workspace.register_observer(self)
+        self.local_command_queue = deque()
+        self.local_message_queue = deque()
+        self.lock = threading.Lock()
         self.args = {}
         self.interrupt_event = asyncio.Event()
 
+    def receive_command(self, command):
+        with self.lock:
+            self.local_command_queue.append(command)
+
+    def receive_message(self, message):
+        with self.lock:
+            self.local_message_queue.append(message)
+
+    def get_messages(self) -> list:
+        messages = []
+        with self.lock:
+            while self.local_message_queue:
+                messages.append(self.local_message_queue.popleft())
+
+        if messages:
+            self.workspace.log_event("MESSAGES_CONSUMED", self.__class__.__name__, {"count": len(messages)})
+            
+        return messages
+
     @abstractmethod
-    def perceive(self):
+    async def perceive(self):
         pass
 
     @abstractmethod
-    def decide(self):
+    async def decide(self):
         pass
     
     @abstractmethod
-    def act(self):
+    async def act(self):
         pass
 
     def get_state(self) -> AgentState:
@@ -73,7 +98,14 @@ class BaseAgent:
     async def run_loop(self):
         try:
             while True:
-                pending_command = self.workspace.get_pending_command(self.__class__.__name__)
+                pending_command = None
+                with self.lock:
+                    if self.local_command_queue:
+                        pending_command = self.local_command_queue.popleft()
+                
+                if pending_command:
+                    self.workspace.log_event("COMMAND_CONSUMED", self.__class__.__name__, pending_command)
+                
                 unhandled_command = None
                 if pending_command:
                     print(f"[{self.__class__.__name__}] Processing command: {pending_command}")
@@ -98,8 +130,8 @@ class BaseAgent:
                 if self.state != AgentState.RUNNING:
                     self.set_state(AgentState.RUNNING)
                 
-                self.perceive(command=unhandled_command, **self.args)
-                self.decide(**self.args)
+                await self.perceive(command=unhandled_command, **self.args)
+                await self.decide(**self.args)
                 action_message = await self.act(**self.args)
 
                 if action_message is not None:
