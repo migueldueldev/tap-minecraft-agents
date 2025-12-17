@@ -1,11 +1,11 @@
 # Import necessary modules
 from mcpi.minecraft import Minecraft
 from SharedWorkspace import SharedWorkspace
-import mcpi.block as block
 import pkgutil
 import importlib
 import os
 import asyncio
+import datetime
 from BaseAgent import BaseAgent
 
 # Connect to the Minecraft game
@@ -26,27 +26,10 @@ print(instances)
 
 async def parse_message(message):
     components = message.split(" ")
-    if len(components) >= 2:
-        agent = components[0]
+    if components and components[0].startswith("./") and len(components) >= 2:
+        agent = components[0][2:]
         action = components[1]
         parameters = components[2:]
-
-        if agent == "agent":
-            if action == "help":
-                output = [
-                    "Available commands:",
-                    "agent status - Show agent status",
-                    "agent stop - Stop all agents"
-                ]
-                for msg in output:
-                    mc.postToChat(msg)
-            elif action in ["status", "stop", "pause", "resume"]:
-                if action == "status":
-                    for instance in instances:
-                        state = instance.get_state()
-                        mc.postToChat(f"Agent {instance.__class__.__name__} state: {state.value}")
-            else:
-                mc.postToChat(f'Action "{action}" not recognized for agent system')
     
         agent_map = {
             "explorer": "ExplorerBot",
@@ -67,9 +50,9 @@ async def parse_message(message):
             return
         
         valid_action = {
-            "explorer" : ["start", "set", "stop", "status"],
-            "miner" : ["start", "set", "fulfill", "pause", "resume", "status"],
-            "builder" : ["plan", "bom", "build", "pause", "resume"],
+            "explorer" : ["start", "set", "stop", "status", "pause", "resume", "help", "toggle", "confirm", "queue"],
+            "miner" : ["start", "set", "fulfill", "pause", "resume", "status", "stop", "help"],
+            "builder" : ["plan", "bom", "build", "pause", "resume", "stop", "status", "help"],
             "workflow" : "run"
         }
 
@@ -77,13 +60,25 @@ async def parse_message(message):
             mc.postToChat(f'Action "{action}" not valid for agent "{agent}"')
             return
         
+        timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"
+        
         command = {
-            "action": action,
-            "parameters": parse_parameters(parameters)
+            "type": "command.control.v1",
+            "source": "User",
+            "target": agent_class_name,
+            "timestamp": timestamp,
+            "payload": {
+                "action": action,
+                "parameters": parse_parameters(parameters)
+            },
+            "status": "SUCCESS",
+            "context": {
+                "task_id": str(id(asyncio.current_task()))
+            }
         }
 
         workspace.post_command(agent_class_name, command)
-        mc.postToChat(f'Command "{action}" sent to agent "{agent}"')
+        print(f'Command "{action} {parameters}" sent to agent "{agent}"')
 
 def parse_parameters(raw_parameters):
     parameters = {}
@@ -112,6 +107,9 @@ def parse_parameters(raw_parameters):
                 except ValueError:
                     parameters[key] = value
             i += 2  
+        else:
+            parameters[param] = None
+            i += 1
     
     return parameters
 
@@ -121,22 +119,16 @@ def find_agent(agent_class_name):
             return instance
     return None
 
-def find_explorer_bot():
-    for instance in instances:
-        if instance.__class__.__name__ == "ExplorerBot":
-            return instance
-    return None
-
 async def read_chat_events():
     while True:
         chat_events = mc.events.pollChatPosts()
         for event in chat_events:
             print(f"Chat event: {event}")
             await parse_message(event.message)
-        await asyncio.sleep(1)
+        await asyncio.sleep(0.1)
 
 async def main():
-    explorer_agent = find_explorer_bot()
+    explorer_agent = find_agent("ExplorerBot")
     if explorer_agent:
         await explorer_agent.start()
     else:

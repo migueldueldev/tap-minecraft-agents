@@ -2,8 +2,9 @@ from BaseAgent import BaseAgent
 
 class BuilderBot(BaseAgent):
     def __init__(self, mc, workspace):
+        super().__init__(mc, workspace)
         self.mc = mc
-        super().__init__(workspace)
+        self.workspace = workspace
 
     def perceive(self, **kwargs):
         pass

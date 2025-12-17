@@ -6,39 +6,32 @@ import datetime
 import asyncio
 import random
 import threading
+import json
 import os
 import math
 
 class ExplorerBot(BaseAgent):
     def __init__(self, mc, workspace):
+        super().__init__(mc, workspace)
         self.mc = mc
-        super().__init__(workspace)
-        self.show_regions_thread = None
-        self.show_regions_stop_event = None
+        self.workspace = workspace
         self.heights = {}
         self.blocks = {}
+        self.displayed_regions = []
+        self.current_exploration_task = None
+        self.exploration_event = asyncio.Event()
+        self.has_new_scan = False
+        self.show_regions = False
+        self.display_duration = 15.0
+        self.pending_command = None
+        self.request_queue = []
+        self.waiting_confirmation = False
 
-    async def perceive(self, command=None, **kwargs):
-        messages = await self.get_messages()
-        for msg in messages:
-            self.handle_message(msg)
+    async def perceive(self, **kwargs):
+        self.exploration_event.clear()
+        self.has_new_scan = True
         
-        if command:
-            action = command.get("action")
-            if action == "set":
-                parameters = command.get("parameters", {})
-                if "range" in parameters:
-                    try:
-                        range_val = int(parameters["range"])
-                        if range_val > 0:
-                            self.args["range"] = range_val
-                            print(f"[PERCEIVE] Updated range={range_val}")
-                        else:
-                            print(f"[PERCEIVE] Invalid range: {range_val}")
-                    except (ValueError, TypeError) as e:
-                        print(f"[PERCEIVE] Error parsing range: {e}")
-                else:
-                    print(f"[PERCEIVE] set command missing range parameter")
+        self.clear_visualization()
 
         self.x0 = kwargs.get("x", 0)
         self.z0 = kwargs.get("z", 0)
@@ -50,10 +43,14 @@ class ExplorerBot(BaseAgent):
                 if dx*dx + dz*dz <= self.area*self.area:
                     all_coords.append((self.x0 + dx, self.z0 + dz))
 
-        self.heights, self.blocks = await asyncio.to_thread(self._scan_world, all_coords)
+        self.heights, self.blocks = await asyncio.to_thread(self.scan_world, all_coords)
         return self.heights
     
     async def decide(self, **kwargs):
+        if not self.has_new_scan or not self.heights:
+            self.stable_regions = None
+            return None
+
         self.elevation_map = self.generate_elevation_map(self.heights)
         self.flat_regions = self.identify_flat_regions(self.elevation_map)
 
@@ -72,66 +69,213 @@ class ExplorerBot(BaseAgent):
         return self.stable_regions
 
     async def act(self, **kwargs):
+        message = None
+        interrupted_by_command = False
+        
         if hasattr(self, 'stable_regions') and self.stable_regions:
-            self.block_names = self.get_block_names()
+            message = self.generate_message()
+            self.mc.postToChat(f"Exploration finished. Found {len(self.stable_regions)} stable flat regions.")
 
-            regions_payload = []
-            for region in self.stable_regions:
-                y = region['y']
-                region_blocks = []
-                for x, z in region['blocks']:
+            if self.show_regions:
+                await asyncio.to_thread(self.update_visualization)
+                
+                try:
+                    wait_task = asyncio.create_task(asyncio.sleep(self.display_duration))
+                    explore_event_task = asyncio.create_task(self.exploration_event.wait())
+                    interrupt_event_task = asyncio.create_task(self.interrupt_event.wait())
+                    
+                    done, pending = await asyncio.wait(
+                        [wait_task, explore_event_task, interrupt_event_task],
+                        return_when=asyncio.FIRST_COMPLETED
+                    )
+                    
+                    for task in pending:
+                        task.cancel()
+                    
+                    if self.exploration_event.is_set():
+                        interrupted_by_command = True
+                        self.exploration_event.clear()
+                        
+                finally:
+                    await asyncio.to_thread(self.clear_visualization)
+        else:
+            self.mc.postToChat("Exploration finished. No stable flat regions found.")
+
+        if not interrupted_by_command:
+            if self.request_queue:
+                next_command = self.request_queue.pop(0)
+                
+                payload = next_command.get("payload", {})
+                parameters = payload.get("parameters", {})
+                
+                self.args.update(parameters)
+                self.mc.postToChat(f"Starting queued exploration. {len(self.request_queue)} requests remaining.")
+            else:
+                self.args.clear()
+
+        if message:
+            self.workspace.post_message(message)
+            print(json.dumps(message, indent=4))
+        return message
+    
+    def handle_command(self, command):
+        payload = command.get("payload", {})
+        action = payload.get("action")
+        parameters = payload.get("parameters", {})
+
+        if action == "confirm":
+            if self.waiting_confirmation and self.pending_command:
+                self.mc.postToChat("Current exploration interrupted. Starting new exploration.")
+                
+                pending_payload = self.pending_command.get("payload", {})
+                parameters = pending_payload.get("parameters", {})
+                
+                self.args.update(parameters)
+                self.exploration_event.set()
+                
+                self.pending_command = None
+                self.waiting_confirmation = False
+            else:
+                self.mc.postToChat("No pending exploration request to confirm.")
+            return True
+        
+        elif action == "queue":
+            if self.waiting_confirmation and self.pending_command:
+                self.request_queue.append(self.pending_command)
+                self.mc.postToChat(f"Exploration request queued. Position: {len(self.request_queue)}")
+                
+                self.pending_command = None
+                self.waiting_confirmation = False
+            else:
+                self.mc.postToChat("No pending exploration request to queue.")
+            return True
+        
+        is_exploration_request = action in ["start", "set"]
+        if is_exploration_request and self.args:
+             self.pending_command = command
+             self.waiting_confirmation = True
+             self.mc.postToChat('Exploration is active. Type "./explorer confirm" to interrupt or "./explorer queue" to queue.')
+             return True
+
+        if super().handle_command(command):
+            if action in ["start", "set"]:
+                self.exploration_event.set()
+            return True
+        
+        if action == "set":
+            self.args.update(parameters)
+            self.exploration_event.set()
+            return True
+        elif action == "toggle":
+            if "display" in parameters:
+                duration = parameters["display"]
+                if duration is not None and isinstance(duration, (int, float)):
+                    self.display_duration = float(duration)
+                
+                self.show_regions = not self.show_regions
+                status = "enabled" if self.show_regions else "disabled"
+                self.mc.postToChat(f"Option to show flat regions has been {status} with duration of {self.display_duration} seconds.")
+            return True
+            
+        return False
+
+    def clear_visualization(self):
+        if self.displayed_regions:
+            for region in self.displayed_regions:
+                if not region['blocks']: continue
+                
+                try:
+                    first_block = next(iter(region['blocks'].values()))
+                    is_uniform = all(b.id == first_block.id and b.data == first_block.data for b in region['blocks'].values())
+                    
+                    min_x, min_z, max_x, max_z, y = region['bounds']
+                
+                    if is_uniform:
+                        self.mc.setBlocks(min_x, y - 1, min_z, max_x, y - 1, max_z, first_block.id, first_block.data)
+                    else:
+                        for (x, _, z), b in region['blocks'].items():
+                            self.mc.setBlock(x, y - 1, z, b.id, b.data)
+                except Exception as e:
+                    print(f"Error restoring original region blocks: {e}")
+            self.displayed_regions.clear()
+
+    def update_visualization(self):
+        self.clear_visualization()
+        
+        for region in self.stable_regions:
+            if not region['blocks']: continue
+            
+            min_x = region['blocks'][0][0]
+            min_z = region['blocks'][0][1]
+            width = region['width']
+            depth = region['depth']
+            y = region['y']
+            
+            max_x = min_x + width - 1
+            max_z = min_z + depth - 1
+            
+            blocks = {}
+            for x in range(min_x, max_x + 1):
+                for z in range(min_z, max_z + 1):
                     block_data = self.blocks.get((x, y, z))
                     if block_data:
-                        region_blocks.append({
-                            "x": x,
-                            "z": z,
-                            "id": block_data.id,
-                            "name": self.block_names.get(block_data.id, "UNKNOWN"),
-                            "data": block_data.data,
-                        })
-                
-                regions_payload.append({
-                    "y": y,
-                    "blocks": region_blocks,
-                    "width": region['width'],
-                    "depth": region['depth']
-                })
-
-            timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"
-
-            message = {
-                "type": "map.v1",
-                "source": "ExplorerBot",
-                "target": "BuilderBot",
-                "timestamp": timestamp,
-                "payload": {
-                    "regions": regions_payload
-                },
-                "status": "SUCCESS",
-                "context": {
-                    "task_id": str(id(self.task)) if self.task else None,
-                    "state": self.state.value
-                }
-            }
-
-            if self.show_regions_thread and self.show_regions_thread.is_alive():
-                self.show_regions_stop_event.set()
-                await asyncio.to_thread(self.show_regions_thread.join)
+                        blocks[(x, y - 1, z)] = block_data
             
-            self.show_regions_stop_event = threading.Event()
+            self.displayed_regions.append({
+                'bounds': (min_x, min_z, max_x, max_z, y),
+                'blocks': blocks
+            })
+            
+            color = random.randint(0, 15)
+            try:
+                self.mc.setBlocks(min_x, y - 1, min_z, max_x, y - 1, max_z, block.WOOL.id, color)
+            except: pass
 
-            self.show_regions_thread = threading.Thread(
-                target=self._show_region_blocks_sync,
-                args=(regions_payload, 10, self.show_regions_stop_event)
-            )
-            self.show_regions_thread.start()
+    def generate_message(self):
+        self.block_names = self.get_block_names()
 
-            return message
-        else: return None
+        regions_payload = []
+        for region in self.stable_regions:
+            y = region['y']
+            region_blocks = []
+            for x, z in region['blocks']:
+                block_data = self.blocks.get((x, y, z))
+                if block_data:
+                    region_blocks.append({
+                        "x": x,
+                        "z": z,
+                        "id": block_data.id,
+                        "name": self.block_names.get(block_data.id, "UNKNOWN"),
+                        "data": block_data.data,
+                    })
+            
+            regions_payload.append({
+                "y": y,
+                "blocks": region_blocks,
+                "width": region['width'],
+                "depth": region['depth']
+            })
+
+        timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"
+
+        message = {
+            "type": "map.v1",
+            "source": "ExplorerBot",
+            "target": "BuilderBot",
+            "timestamp": timestamp,
+            "payload": {
+                "regions": regions_payload
+            },
+            "status": "SUCCESS",
+            "context": {
+                "task_id": str(id(self.pda_task)) if self.pda_task else None,
+                "state": self.state.value
+            }
+        }
+        return message
 
     def stop(self):
-        if self.show_regions_thread and self.show_regions_thread.is_alive():
-            self.show_regions_stop_event.set()
+        self.clear_visualization()
         super().stop()
         
     def generate_elevation_map(self, heights):
@@ -157,12 +301,12 @@ class ExplorerBot(BaseAgent):
                 count += 1
             
             while count > 0:
-                best_rect = self.find_largest_rectangle_in_grid(grid, size, size)
+                largest_rect = self.find_largest_rectangle(grid, size, size)
                 
-                if not best_rect:
+                if not largest_rect:
                     break
                     
-                rx, rz, rwidth, rdepth = best_rect
+                rx, rz, rwidth, rdepth = largest_rect
                 
                 world_x = rx + min_x
                 world_z = rz + min_z
@@ -185,9 +329,9 @@ class ExplorerBot(BaseAgent):
                 
         return flat_regions
 
-    def find_largest_rectangle_in_grid(self, grid, rows, cols):
+    def find_largest_rectangle(self, grid, rows, cols):
         max_area = 0
-        best_rect = None
+        largest_rect = None
         
         heights = [0] * (cols + 1)
         
@@ -207,10 +351,10 @@ class ExplorerBot(BaseAgent):
                     if area > max_area:
                         max_area = area
                         x_start = 0 if not stack else stack[-1] + 1
-                        best_rect = (x_start, r - h + 1, w, h)
+                        largest_rect = (x_start, r - h + 1, w, h)
                 stack.append(c)
                 
-        return best_rect
+        return largest_rect
     
     def is_region_stable(self, region):
         y = region['y']
@@ -223,7 +367,7 @@ class ExplorerBot(BaseAgent):
     def get_block_names(self):
         return {b.id: name for name, b in block.__dict__.items() if hasattr(b, "id")}
     
-    def scan_chunk(coords, results, lock):
+    def scan_chunk(self, coords, results, lock):
         try:
             mc_instance = Minecraft.create()
             chunk_heights = {}
@@ -235,11 +379,11 @@ class ExplorerBot(BaseAgent):
             with lock:
                 results.append((chunk_heights, chunk_blocks))
         except Exception as e:
-            print(f"Scanning error: {e}")
+            print(f"Chunk area scanning error: {e}")
             with lock:
                 results.append(({}, {}))
 
-    def _scan_world(self, all_coords):
+    def scan_world(self, all_coords):
         if not all_coords:
             return {}, {}
 
@@ -269,42 +413,3 @@ class ExplorerBot(BaseAgent):
             blocks.update(b)
         
         return heights, blocks
-
-    def _show_region_blocks_sync(self, regions_payload, duration, stop_event):
-        try:
-            mc = Minecraft.create()
-        except Exception as e:
-            print(f"[VISUALIZE] Failed to connect to Minecraft: {e}")
-            return
-
-        original_blocks = {} 
-        try:
-            for r in regions_payload:
-                for b in r['blocks']:
-                    x, y, z = b['x'], r['y'], b['z']
-                    try:
-                        original_block = mc.getBlockWithData(x, y - 1, z)
-                        original_blocks[(x, y, z)] = original_block
-                    except Exception as e:
-                        print(f"[VISUALIZE] Failed to get block at ({x}, {y - 1}, {z}): {e}")
-
-            for region in regions_payload:
-                color = random.randint(0, 15)
-                for b in region['blocks']:
-                    x, z = b['x'], b['z']
-                    if (x, region['y'], z) in original_blocks:
-                        mc.setBlock(x, region['y'] - 1, z, block.WOOL.id, color)
-
-            print(f"[VISUALIZE] Showing {len(original_blocks)} blocks for {duration}s...")
-            
-            if stop_event.wait(duration):
-                print(f"[VISUALIZE] Visualization cancelled, restoring blocks...")
-            else:
-                print(f"[VISUALIZE] Visualization completed, restoring blocks...")
-
-        except Exception as e:
-            print(f"[VISUALIZE] Error: {e}")
-        finally:
-            for (x, y, z), b in original_blocks.items():
-                mc.setBlock(x, y - 1, z, b.id, b.data)
-            print(f"[VISUALIZE] Restored {len(original_blocks)} blocks")
