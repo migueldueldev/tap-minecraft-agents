@@ -128,17 +128,14 @@ async def read_chat_events():
         await asyncio.sleep(0.1)
 
 async def main():
-    explorer_agent = find_agent("ExplorerBot")
-    if explorer_agent:
-        await explorer_agent.start()
-    else:
-        print("ExplorerBot instance not found")
-    
-    miner_agent = find_agent("MinerBot")
-    if miner_agent:
-        await miner_agent.start()
-    else:
-        print("MinerBot instance not found")
+    agents = ["ExplorerBot", "MinerBot", "BuilderBot"]
+
+    for agent in agents:
+        instance = find_agent(agent)
+        if instance:
+            await instance.start()
+        else:
+            print(f"{agent} instance not found")
         
     chat_task = asyncio.create_task(read_chat_events())
     print("Ready")
