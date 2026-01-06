@@ -1,13 +1,40 @@
 from BaseAgent import BaseAgent, AgentState
 from mcpi.minecraft import Minecraft
+from functools import reduce
 import mcpi.block as block
 import datetime
 import asyncio
 from agents.MiningStrategy import MiningStrategy, VerticalSearchStrategy, GridSearchStrategy, VeinSearchStrategy
 
-AUTO_PROVIDED_MATERIALS = ["GRASS", "DIRT", "GRAVEL", "SAND", "WOOD_PLANKS", "WOOD", "SANDSTONE", "COBWEB", "WOOL", "LEAVES", "GLASS", "FLOWER_YELLOW", "FLOWER_CYAN", "STON_SLAB", "STONE_SLAB_DOUBLE", "BRICK_BLOCK", "BOOKSHELF", "MOSS_STONE", "OBSIDIAN", "TORCH", "STAIRS_WOOD", "CHEST", "DOOR_WOOD", "LADDER", "STAIRS_COBBLESTONE", "FENCE", "GLOWSTONE_BLOCK", "STONE_BRICK", "GLASS_PANE", "FENCE_GATE"]
-MINABLE_MATERIALS = ["STONE","COBBLESTONE", "COAL_ORE", "IRON_ORE", "GOLD_ORE", "DIAMOND_ORE", "REDSTONE_ORE", "LAPIS_LAZULI_ORE",]
-PROCESSABLE_MATERIALS = {"IRON_BLOCK": {"raw": "IRON_ORE", "ammount": 9, "process": "smelt"}, "GOLD_BLOCK": {"raw": "GOLD_ORE", "ammount": 9, "process": "smelt"}, "DIAMOND_BLOCK": {"raw": "DIAMOND_ORE", "ammount": 9, "process": "craft"}, "LAPIS_BLOCK": {"raw": "LAPIS_LAZULI_ORE", "ammount": 9, "process" : "craft"}, "IRON_DOOR": {"raw": "IRON_ORE", "ammount": 6, "process": "smelt"}}
+# Materials that are provided automatically and do not need to be mined
+AUTO_PROVIDED_MATERIALS = [
+    "GRASS", "DIRT", "GRAVEL", "SAND", "WOOD_PLANKS", "WOOD", "SANDSTONE", "WOOL",
+    "LEAVES", "GLASS", "BRICK_BLOCK", "BOOKSHELF", "MOSS_STONE", "TORCH",
+    "STAIRS_WOOD", "CHEST", "DOOR_WOOD", "LADDER", "STAIRS_COBBLESTONE",
+    "FENCE", "GLOWSTONE_BLOCK", "STONE_BRICK", "GLASS_PANE", "FENCE_GATE",
+    "SAPLING", "BED", "COBWEB", "GRASS_TALL", "FLOWER_YELLOW", "FLOWER_CYAN",
+    "MUSHROOM_BROWN", "MUSHROOM_RED", "STONE_SLAB_DOUBLE", "STONE_SLAB",
+    "TNT", "FIRE", "CRAFTING_TABLE", "FARMLAND", "FURNACE_INACTIVE",
+    "FURNACE_ACTIVE", "DOOR_IRON", "SNOW", "ICE", "SNOW_BLOCK", "CACTUS",
+    "CLAY", "SUGAR_CANE", "MELON", "BEDROCK_INVISIBLE", "GLOWING_OBSIDIAN",
+    "NETHER_REACTOR_CORE", "OBSIDIAN", "BEDROCK", "WATER", "WATER_STATIONARY",
+    "LAVA", "LAVA_STATIONARY", "COBBLESTONE"
+]
+
+# Materials that can be mined (ores and stone based blocks)
+MINABLE_MATERIALS = [
+    "STONE", "COAL_ORE", "IRON_ORE", "GOLD_ORE",
+    "DIAMOND_ORE", "REDSTONE_ORE", "LAPIS_LAZULI_ORE"
+]
+
+# Materials that require processing from raw ores
+PROCESSABLE_MATERIALS = {
+    "IRON_BLOCK": {"raw": "IRON_ORE", "amount": 9, "process": "smelt"},
+    "GOLD_BLOCK": {"raw": "GOLD_ORE", "amount": 9, "process": "smelt"},
+    "DIAMOND_BLOCK": {"raw": "DIAMOND_ORE", "amount": 9, "process": "craft"},
+    "LAPIS_LAZULI_BLOCK": {"raw": "LAPIS_LAZULI_ORE", "amount": 9, "process": "craft"},
+    "DOOR_IRON": {"raw": "IRON_ORE", "amount": 6, "process": "smelt"}
+}
 
 class MinerBot(BaseAgent):
     def __init__(self, mc, workspace):
@@ -70,6 +97,11 @@ class MinerBot(BaseAgent):
                         "requirements": self.material_requirements,
                     }
                 )
+            
+            if self.ready_to_mine and self.state != AgentState.RUNNING:
+                self.set_state(AgentState.RUNNING, "Mining in progress")
+        elif self.state == AgentState.RUNNING:
+            self.set_state(AgentState.IDLE, "No active mining task")
 
     async def act(self, **kwargs):
         if not self.current_bom or not self.mining_strategy or not self.ready_to_mine:
@@ -151,6 +183,7 @@ class MinerBot(BaseAgent):
                         if material not in self.inventory:
                             self.inventory[material] = 0
                         self.inventory[material] += quantity
+                    self.convert_ores_to_blocks()
                 
                 self.send_inventory_update(complete=False)
                 
@@ -237,6 +270,11 @@ class MinerBot(BaseAgent):
         self.current_bom = message
         self.mining_position = None
         
+        # Auto provide materials that do not need mining
+        for material, qty in requirements.items():
+            if material in AUTO_PROVIDED_MATERIALS:
+                self.inventory[material] = qty
+        
         self.workspace.log_event(
             "BOM_RECEIVED",
             self.__class__.__name__,
@@ -251,13 +289,30 @@ class MinerBot(BaseAgent):
             self.mc.postToChat(f"MinerBot: Received requirements for {len(minable_reqs)} minable materials")
         
     def get_minable_requirements(self) -> dict:
-        minable_reqs = {}
-        for material, qty in self.material_requirements.items():
-            if material in MINABLE_MATERIALS:
-                still_needed = qty - self.inventory.get(material, 0)
-                if still_needed > 0:
-                    minable_reqs[material] = still_needed
-        return minable_reqs
+        remaining = {m: max(0, q - self.inventory.get(m, 0)) for m, q in self.material_requirements.items() if m not in AUTO_PROVIDED_MATERIALS}
+        ore_reqs = reduce(self.merge_ores, map(lambda kv: self.to_ore_req(*kv), remaining.items()), {})
+        return {m: q for m, q in ore_reqs.items() if m in MINABLE_MATERIALS and q > 0}
+
+    def to_ore_req(self, material, quantity):
+        if material in PROCESSABLE_MATERIALS:
+            return (PROCESSABLE_MATERIALS[material]["raw"], quantity * PROCESSABLE_MATERIALS[material]["amount"])
+        return (material, quantity)
+    
+    def merge_ores(self, acc, kv):
+        return {**acc, kv[0]: acc.get(kv[0], 0) + kv[1]}
+
+    def convert_ores_to_blocks(self):
+        for block_name, info in PROCESSABLE_MATERIALS.items():
+            if block_name not in self.material_requirements:
+                continue
+            needed = self.material_requirements[block_name]
+            ore_name, ore_per_block = info["raw"], info["amount"]
+            available_ore = self.inventory.get(ore_name, 0)
+            can_make = available_ore // ore_per_block
+            to_convert = min(can_make, needed - self.inventory.get(block_name, 0))
+            if to_convert > 0:
+                self.inventory[ore_name] -= to_convert * ore_per_block
+                self.inventory[block_name] = self.inventory.get(block_name, 0) + to_convert
 
     def validate_inventory(self) -> bool:
         for material, needed in self.material_requirements.items():

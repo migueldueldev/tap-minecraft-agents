@@ -9,35 +9,30 @@ import os
 class BuilderBot(BaseAgent):
     # Block mapping from Minecraft IDs to Mcpi block types
     BLOCK_MAP = {
-        "minecraft:air": ("AIR", 0), "minecraft:stone": ("STONE", 0),
-        "minecraft:grass_block": ("GRASS", 0), "minecraft:dirt": ("DIRT", 0),
-        "minecraft:cobblestone": ("COBBLESTONE", 0), "minecraft:oak_planks": ("WOOD_PLANKS", 0),
-        "minecraft:spruce_planks": ("WOOD_PLANKS", 1), "minecraft:birch_planks": ("WOOD_PLANKS", 2),
-        "minecraft:jungle_planks": ("WOOD_PLANKS", 3), "minecraft:oak_log": ("WOOD", 0),
-        "minecraft:spruce_log": ("WOOD", 1), "minecraft:birch_log": ("WOOD", 2),
-        "minecraft:jungle_log": ("WOOD", 3), "minecraft:oak_leaves": ("LEAVES", 1),
-        "minecraft:spruce_leaves": ("LEAVES", 2), "minecraft:birch_leaves": ("LEAVES", 3),
-        "minecraft:glass": ("GLASS", 0), "minecraft:sandstone": ("SANDSTONE", 0),
-        "minecraft:white_wool": ("WOOL", 0), "minecraft:orange_wool": ("WOOL", 1),
-        "minecraft:yellow_wool": ("WOOL", 4), "minecraft:gold_block": ("GOLD_BLOCK", 0),
-        "minecraft:iron_block": ("IRON_BLOCK", 0), "minecraft:brick_block": ("BRICK_BLOCK", 0),
-        "minecraft:bookshelf": ("BOOKSHELF", 0), "minecraft:mossy_cobblestone": ("MOSS_STONE", 0),
-        "minecraft:obsidian": ("OBSIDIAN", 0), "minecraft:torch": ("TORCH", 0),
-        "minecraft:oak_stairs": ("STAIRS_WOOD", 0), "minecraft:chest": ("CHEST", 0),
-        "minecraft:diamond_ore": ("DIAMOND_ORE", 0), "minecraft:diamond_block": ("DIAMOND_BLOCK", 0),
-        "minecraft:crafting_table": ("CRAFTING_TABLE", 0), "minecraft:furnace": ("FURNACE_INACTIVE", 0),
-        "minecraft:oak_door": ("DOOR_WOOD", 0), "minecraft:ladder": ("LADDER", 0),
-        "minecraft:cobblestone_stairs": ("STAIRS_COBBLESTONE", 0), "minecraft:iron_door": ("DOOR_IRON", 0),
-        "minecraft:oak_fence": ("FENCE", 0), "minecraft:glowstone": ("GLOWSTONE_BLOCK", 0),
-        "minecraft:stone_bricks": ("STONE_BRICK", 0), "minecraft:glass_pane": ("GLASS_PANE", 0),
-        "minecraft:oak_fence_gate": ("FENCE_GATE", 0), "minecraft:sand": ("SAND", 0),
-        "minecraft:gravel": ("GRAVEL", 0), "minecraft:gold_ore": ("GOLD_ORE", 0),
-        "minecraft:iron_ore": ("IRON_ORE", 0), "minecraft:coal_ore": ("COAL_ORE", 0),
-        "minecraft:redstone_ore": ("REDSTONE_ORE", 0), "minecraft:lapis_ore": ("LAPIS_LAZULI_ORE", 0),
-        "minecraft:lapis_block": ("LAPIS_LAZULI_BLOCK", 0), "minecraft:tnt": ("TNT", 0),
-        "minecraft:snow": ("SNOW", 0), "minecraft:ice": ("ICE", 0), "minecraft:cactus": ("CACTUS", 0),
-        "minecraft:clay": ("CLAY", 0), "minecraft:melon": ("MELON", 0), "minecraft:bedrock": ("BEDROCK", 0),
-        "minecraft:water": ("WATER", 0), "minecraft:lava": ("LAVA", 0),
+        0: "AIR", 1: "STONE", 2: "GRASS",
+        3: "DIRT", 4: "COBBLESTONE", 5: "WOOD_PLANKS",
+        6: "SAPLING", 7: "BEDROCK", 8: "WATER",
+        9: "WATER_STATIONARY", 10: "LAVA", 11: "LAVA_STATIONARY",
+        12: "SAND", 13: "GRAVEL", 14: "GOLD_ORE",
+        15: "IRON_ORE", 16: "COAL_ORE", 17: "WOOD",
+        18: "LEAVES", 20: "GLASS", 21: "LAPIS_LAZULI_ORE",
+        22: "LAPIS_LAZULI_BLOCK", 24: "SANDSTONE", 26: "BED",
+        30: "COBWEB", 31: "GRASS_TALL", 35: "WOOL",
+        37: "FLOWER_YELLOW", 38: "FLOWER_CYAN", 39: "MUSHROOM_BROWN",
+        40: "MUSHROOM_RED", 41: "GOLD_BLOCK", 42: "IRON_BLOCK",
+        43: "STONE_SLAB_DOUBLE", 44: "STONE_SLAB", 45: "BRICK_BLOCK",
+        46: "TNT", 47: "BOOKSHELF", 48: "MOSS_STONE",
+        49: "OBSIDIAN", 50: "TORCH", 51: "FIRE",
+        53: "STAIRS_WOOD", 54: "CHEST", 56: "DIAMOND_ORE",
+        57: "DIAMOND_BLOCK", 58: "CRAFTING_TABLE", 60: "FARMLAND",
+        61: "FURNACE_INACTIVE", 62: "FURNACE_ACTIVE", 64: "DOOR_WOOD",
+        65: "LADDER", 67: "STAIRS_COBBLESTONE", 71: "DOOR_IRON",
+        73: "REDSTONE_ORE", 78: "SNOW", 79: "ICE",
+        80: "SNOW_BLOCK", 81: "CACTUS", 82: "CLAY",
+        83: "SUGAR_CANE", 85: "FENCE", 89: "GLOWSTONE_BLOCK",
+        95: "BEDROCK_INVISIBLE", 98: "STONE_BRICK", 102: "GLASS_PANE",
+        103: "MELON", 107: "FENCE_GATE", 246: "GLOWING_OBSIDIAN",
+        247: "NETHER_REACTOR_CORE"
     }
 
     # Materials provided automatically which cannot be mined
@@ -61,6 +56,7 @@ class BuilderBot(BaseAgent):
         self.is_building = False
         self.build_ready = False
         self.terrain_data = None
+        self.requirements_published = False
 
     async def perceive(self, **kwargs):
         """Process messages from other agents"""
@@ -72,8 +68,12 @@ class BuilderBot(BaseAgent):
             elif msg_type == "inventory.v1":
                 for item in msg.get("payload", {}).get("materials", []):
                     self.inventory[item["material"]] = item["collected"]
-                if self._materials_ready() and self.build_ready:
-                    self.mc.postToChat("Builder agent has received all necessary materials")
+                is_complete = msg.get("payload", {}).get("complete", False)
+                if is_complete:
+                    self.mc.postToChat(f"Builder agent has received inventory update of {len(msg.get('payload', {}).get('materials', []))} materials")
+                    if self._materials_ready():
+                        self.mc.postToChat("Builder agent has received all necessary materials")
+                        self.requirements_published = False
 
     async def decide(self, **kwargs):
         """Decide next agent state based on conditions"""
@@ -116,15 +116,18 @@ class BuilderBot(BaseAgent):
     def _structure_blocks(self, schem: dict) -> dict:
         """Transform schematic parsed data to layered block structure"""
         w, h, l = schem['Width'], schem['Height'], schem['Length']
-        palette = {v: k for k, v in schem['Palette'].items()}
-        data = schem['BlockData']
-
+        blocks = schem.get('Blocks', [])
+        block_data = schem.get('Data', [])
+        
         def block_at(x, y, z):
             idx = (y * l + z) * w + x
-            if idx >= len(data):
+            if idx >= len(blocks):
                 return None
-            name = palette.get(data[idx], "minecraft:air").split('[')[0]
-            mc_blk, mc_data = self.BLOCK_MAP.get(name, ("STONE", 0))
+            block_id = blocks[idx]
+            if block_id < 0:
+                block_id = block_id + 256
+            mc_blk = self.BLOCK_MAP.get(block_id, "STONE")
+            mc_data = block_data[idx] if idx < len(block_data) else 0
             return None if mc_blk == "AIR" else {"x": x, "z": z, "block": mc_blk, "data": mc_data}
 
         layers = {y: list(filter(None, [block_at(x, y, z) for z in range(l) for x in range(w)])) for y in range(h)}
@@ -188,6 +191,10 @@ class BuilderBot(BaseAgent):
         pending = self._pending_materials()
         if not pending:
             return
+        if self.requirements_published:
+            self.mc.postToChat("Builder agent is still waiting for materials from mining")
+            return
+        self.requirements_published = True
         timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"
         self.workspace.post_message({
             "type": "materials.requirements.v1",
@@ -232,11 +239,6 @@ class BuilderBot(BaseAgent):
         self.workspace.log_event("BUILD_STARTED", self.__class__.__name__, {"timestamp": start})
         
         try:
-            if not self.build_position:
-                pos = self.mc.player.getTilePos()   # Use current player position
-                self.build_position = (pos.x, pos.y, pos.z)
-                self.mc.postToChat(f"Builder agent starting building at {self.build_position}")
-
             self.is_building = True
             self._publish_progress("IN_PROGRESS")
             sorted_y = sorted(self.structured_blocks.keys())
@@ -257,7 +259,7 @@ class BuilderBot(BaseAgent):
                     # Place blocks one by one
                     b = getattr(block, blk["block"], block.STONE)
                     self.mc.setBlock(bx + blk["x"], by + y_coord, bz + blk["z"], b.id, blk["data"])
-                    await asyncio.sleep(0.1)
+                    await asyncio.sleep(0.02)
 
                 self.checkpoint = {"layer": layer_id + 1, "block_idx": 0}
                 self._save_checkpoint()
@@ -267,6 +269,11 @@ class BuilderBot(BaseAgent):
             self._save_checkpoint()
             end = datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"
             self.workspace.log_event("BUILD_COMPLETED", self.__class__.__name__, {"timestamp": end})
+            self.build_ready = False
+            self.terrain_data = None
+            self.inventory.clear()
+            self.build_position = None
+            self.checkpoint = {"layer": 0, "block_idx": 0}
 
         except Exception as e:
             self.workspace.log_event("BUILD_ERROR", self.__class__.__name__, {"error": str(e)})
@@ -280,7 +287,7 @@ class BuilderBot(BaseAgent):
 
         if super().handle_command(command):
             if action == "resume" and self.current_plan:
-                self.mc.postToChat("Builder bot has resumed building from checkpoint")
+                self.mc.postToChat("Builder agent has resumed building from checkpoint")
             return True
 
         actions = {"plan": self._plan, "bom": self._bom, "build": self._build}
@@ -305,6 +312,9 @@ class BuilderBot(BaseAgent):
                 self.checkpoint = {"layer": 0, "block_idx": 0}
                 self.build_position = None
                 self.build_ready = False
+                self.requirements_published = False
+                self.inventory.clear()
+                self.args.update({"plan": template})
                 total = sum(len(l) for l in self.structured_blocks.values())
                 self.mc.postToChat(f"Template '{template}' has been loaded with {total} blocks")
             except FileNotFoundError:

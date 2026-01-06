@@ -8,23 +8,30 @@ import asyncio
 import datetime
 from BaseAgent import BaseAgent
 
-# Connect to the Minecraft game
-mc = Minecraft.create()
-workspace = SharedWorkspace()
+def connect_mc() -> Minecraft:
+    """Connect to the Minecraft server"""
+    try:
+        return Minecraft.create()
+    except Exception as e:
+        print(f"Error connecting to Minecraft: {e}")
+        exit(1)
 
-agents_dir = os.path.join(os.path.dirname(__file__), "agents")
-for module in pkgutil.iter_modules([agents_dir]):
-    importlib.import_module(f"agents.{module.name}")
+def load_agents(mc, workspace) -> list:
+    """Dynamically load agent modules using reflection"""
+    agents_dir = os.path.join(os.path.dirname(__file__), "agents")
+    for module in pkgutil.iter_modules([agents_dir]):
+        importlib.import_module(f"agents.{module.name}")
 
-instances = []
-for subclass in BaseAgent.__subclasses__():
-    obj = subclass(mc, workspace)
-    if isinstance(obj, BaseAgent):
-        instances.append(obj)
+    instances = []
+    for subclass in BaseAgent.__subclasses__():
+        obj = subclass(mc, workspace)
+        if isinstance(obj, BaseAgent):
+            instances.append(obj)
 
-print(instances)
+    print(f"Agents loaded: {instances}")
+    return instances
 
-async def parse_message(message):
+async def parse_message(message, mc, workspace, instances):
     components = message.split(" ")
     if components and components[0].startswith("./") and len(components) >= 2:
         agent = components[0][2:]
@@ -43,7 +50,7 @@ async def parse_message(message):
             return
         
         agent_class_name = agent_map[agent]
-        agent_instance = find_agent(agent_class_name)
+        agent_instance = find_agent(instances, agent_class_name)
         
         if not agent_instance:
             mc.postToChat(f'Agent instance "{agent_class_name}" not found')
@@ -53,7 +60,7 @@ async def parse_message(message):
             "explorer" : ["start", "set", "stop", "status", "pause", "resume", "help", "toggle", "confirm", "queue"],
             "miner" : ["start", "set", "fulfill", "pause", "resume", "status", "stop", "help", "test"],
             "builder" : ["plan", "bom", "build", "pause", "resume", "stop", "status", "help"],
-            "workflow" : "run"
+            "workflow" : ["run"]
         }
 
         if action not in valid_action.get(agent, []):
@@ -113,31 +120,35 @@ def parse_parameters(raw_parameters):
     
     return parameters
 
-def find_agent(agent_class_name):
+def find_agent(instances, agent_class_name):
     for instance in instances:
         if instance.__class__.__name__ == agent_class_name:
             return instance
     return None
 
-async def read_chat_events():
+async def read_chat_events(mc, workspace, instances):
     while True:
         chat_events = mc.events.pollChatPosts()
         for event in chat_events:
             print(f"Chat event: {event}")
-            await parse_message(event.message)
+            await parse_message(event.message, mc, workspace, instances)
         await asyncio.sleep(0.1)
 
 async def main():
+    mc = connect_mc()
+    workspace = SharedWorkspace()
+    instances = load_agents(mc, workspace)
+
     agents = ["ExplorerBot", "MinerBot", "BuilderBot"]
 
     for agent in agents:
-        instance = find_agent(agent)
+        instance = find_agent(instances, agent)
         if instance:
             await instance.start()
         else:
             print(f"{agent} instance not found")
         
-    chat_task = asyncio.create_task(read_chat_events())
+    chat_task = asyncio.create_task(read_chat_events(mc, workspace, instances))
     print("Ready")
 
     try:
