@@ -1,0 +1,25 @@
+# Codecov Configuration
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+    patch:
+      default:
+        target: auto
+
+# Flags to separate unit and integration test coverage
+flags:
+  unit:
+    paths:
+      - MinecraftAgentsFramework/
+    carryforward: true
+  integration:
+    paths:
+      - MinecraftAgentsFramework/
+    carryforward: true
+
+# Ignore paths
+ignore:
+  - "**/tests/**"
+  - "**/__pycache__/**"

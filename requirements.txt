@@ -1,0 +1,6 @@
+mcpi
+asyncio
+nbt
+pytest
+pytest-cov
+pytest-asyncio
