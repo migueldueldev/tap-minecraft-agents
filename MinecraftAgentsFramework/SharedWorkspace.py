@@ -2,13 +2,21 @@ import json
 import datetime
 
 class SharedWorkspace:
+    # Message types observed by workflow
+    WORKFLOW_OBSERVABLE = set({'map.v1', 'materials.requirements.v1', 'inventory.v1', 'build.v1'})
+    
     def __init__(self):
         self.observers = []
+        self.workflow_observer = None
         self.log_file = "agent_execution.log"
     
     def register_observer(self, observer):
         if observer not in self.observers:
             self.observers.append(observer)
+    
+    def register_workflow_observer(self, workflow):
+        """Register workflow for message observation."""
+        self.workflow_observer = workflow
             
     def remove_observer(self, observer):
         if observer in self.observers:
@@ -23,9 +31,16 @@ class SharedWorkspace:
     def post_message(self, message):
         self.log_event("MESSAGE_POSTED", message.get('source'), message)
         target = message.get('target')
+        msg_type = message.get('type', '')
+        
+        # Send to target agent
         for observer in self.observers:
             if observer.__class__.__name__ == target:
                 observer.receive_message(message)
+        
+        # Notify workflow of relevant messages
+        if self.workflow_observer and msg_type in self.WORKFLOW_OBSERVABLE:
+            self.workflow_observer.receive_message(message)
     
     def log_event(self, event_type, agent, data):
         timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"

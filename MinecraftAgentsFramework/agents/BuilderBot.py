@@ -317,6 +317,7 @@ class BuilderBot(BaseAgent):
                 self.args.update({"plan": template})
                 total = sum(len(l) for l in self.structured_blocks.values())
                 self.mc.postToChat(f"Template '{template}' has been loaded with {total} blocks")
+                self._publish_requirements()
             except FileNotFoundError:
                 self.mc.postToChat(f"Template '{template}' not found.")
 
@@ -338,7 +339,6 @@ class BuilderBot(BaseAgent):
             return
         if not self._materials_ready():
             self.mc.postToChat(f"Builder agent is waiting for {len(self._pending_materials())} materials")
-            self._publish_requirements()
             return
         if not self.terrain_data:
             self.mc.postToChat("Builder agent is waiting for terrain data from exploration")

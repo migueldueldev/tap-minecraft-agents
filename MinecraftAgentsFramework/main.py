@@ -1,6 +1,7 @@
 # Import necessary modules
 from mcpi.minecraft import Minecraft
 from SharedWorkspace import SharedWorkspace
+from Workflow import Workflow
 import pkgutil
 import importlib
 import os
@@ -31,7 +32,7 @@ def load_agents(mc, workspace) -> list:
     print(f"Agents loaded: {instances}")
     return instances
 
-async def parse_message(message, mc, workspace, instances):
+async def parse_message(message, mc, workspace, instances, workflow):
     components = message.split(" ")
     if components and components[0].startswith("./") and len(components) >= 2:
         agent = components[0][2:]
@@ -42,9 +43,13 @@ async def parse_message(message, mc, workspace, instances):
             "explorer": "ExplorerBot",
             "miner": "MinerBot",
             "builder": "BuilderBot",
-            "workflow": "Workflow"
         }
 
+        # Handle workflow command separately
+        if agent == "workflow":
+            await handle_workflow_command(action, parameters, workflow, mc, workspace, instances)
+            return
+        
         if agent not in agent_map:
             mc.postToChat(f'Agent "{agent}" not recognized')
             return
@@ -60,7 +65,6 @@ async def parse_message(message, mc, workspace, instances):
             "explorer" : ["start", "set", "stop", "status", "pause", "resume", "help", "toggle", "confirm", "queue"],
             "miner" : ["start", "set", "fulfill", "pause", "resume", "status", "stop", "help", "test"],
             "builder" : ["plan", "bom", "build", "pause", "resume", "stop", "status", "help"],
-            "workflow" : ["run"]
         }
 
         if action not in valid_action.get(agent, []):
@@ -126,18 +130,35 @@ def find_agent(instances, agent_class_name):
             return instance
     return None
 
-async def read_chat_events(mc, workspace, instances):
+async def read_chat_events(mc, workspace, instances, workflow):
     while True:
         chat_events = mc.events.pollChatPosts()
         for event in chat_events:
             print(f"Chat event: {event}")
-            await parse_message(event.message, mc, workspace, instances)
+            await parse_message(event.message, mc, workspace, instances, workflow)
         await asyncio.sleep(0.1)
+
+async def handle_workflow_command(action: str, parameters: list, workflow: Workflow, mc, workspace, instances):
+    """Handle workflow commands separately from agent commands."""
+    valid_actions = ["run", "stop", "help"]
+    if action not in valid_actions:
+        mc.postToChat(f'Action "{action}" not valid for workflow execution')
+        return
+    
+    parsed_params = parse_parameters(parameters)
+    
+    if action == "run":
+        asyncio.create_task(workflow.run(parsed_params))
+    elif action == "stop":
+        workflow.stop()
+    elif action == "help":
+        workflow.help()
 
 async def main():
     mc = connect_mc()
     workspace = SharedWorkspace()
     instances = load_agents(mc, workspace)
+    workflow = Workflow(mc, workspace, instances)
 
     agents = ["ExplorerBot", "MinerBot", "BuilderBot"]
 
@@ -148,7 +169,7 @@ async def main():
         else:
             print(f"{agent} instance not found")
         
-    chat_task = asyncio.create_task(read_chat_events(mc, workspace, instances))
+    chat_task = asyncio.create_task(read_chat_events(mc, workspace, instances, workflow))
     print("Ready")
 
     try:

@@ -65,6 +65,7 @@ async def test_parse_message_success():
     # Setup mocks
     mc = MagicMock()
     workspace = MagicMock()
+    workflow = MagicMock()
     
     class MockBot:
         pass
@@ -74,7 +75,7 @@ async def test_parse_message_success():
     instances = [explorer_instance]
     
     # Test valid command
-    await parse_message("./explorer start speed=10", mc, workspace, instances)
+    await parse_message("./explorer start speed=10", mc, workspace, instances, workflow)
     
     # Verify that post command was called with correct data
     workspace.post_command.assert_called_once()
@@ -89,9 +90,10 @@ async def test_parse_message_invalid_agent():
     """Test that unrecognized agents are handled with an error message"""
     mc = MagicMock()
     workspace = MagicMock()
+    workflow = MagicMock()
     instances = []
     
-    await parse_message("./unknown_agent start", mc, workspace, instances)
+    await parse_message("./unknown_agent start", mc, workspace, instances, workflow)
     
     mc.postToChat.assert_called_with('Agent "unknown_agent" not recognized')
 
@@ -101,9 +103,10 @@ async def test_parse_message_instance_not_found():
     """Test that missing agent instances are handled"""
     mc = MagicMock()
     workspace = MagicMock()
+    workflow = MagicMock()
     instances = []  # No instances loaded
     
-    await parse_message("./explorer start", mc, workspace, instances)
+    await parse_message("./explorer start", mc, workspace, instances, workflow)
     
     mc.postToChat.assert_called_with('Agent instance "ExplorerBot" not found')
 
@@ -113,6 +116,7 @@ async def test_parse_message_invalid_action():
     """Test that invalid actions are rejected"""
     mc = MagicMock()
     workspace = MagicMock()
+    workflow = MagicMock()
     
     class MockBot:
         pass
@@ -121,7 +125,7 @@ async def test_parse_message_invalid_action():
     explorer_instance.__class__.__name__ = "ExplorerBot"
     instances = [explorer_instance]
     
-    await parse_message("./explorer fly", mc, workspace, instances)
+    await parse_message("./explorer fly", mc, workspace, instances, workflow)
     
     mc.postToChat.assert_called_with('Action "fly" not valid for agent "explorer"')
 
@@ -131,6 +135,7 @@ async def test_parse_message_complex_parameters():
     """Test parsing complex parameter combinations"""
     mc = MagicMock()
     workspace = MagicMock()
+    workflow = MagicMock()
     
     class MockBot:
         pass
@@ -140,7 +145,7 @@ async def test_parse_message_complex_parameters():
     instances = [miner_instance]
     
     # Test different parameter formats: key=val, key val and flag
-    await parse_message("./miner start range=5 target diamond fast", mc, workspace, instances)
+    await parse_message("./miner start range=5 target diamond fast", mc, workspace, instances, workflow)
     
     workspace.post_command.assert_called_once()
     payload = workspace.post_command.call_args[0][1]["payload"]
@@ -156,10 +161,11 @@ async def test_parse_message_non_command():
     """Test that non-command messages are ignored"""
     mc = MagicMock()
     workspace = MagicMock()
+    workflow = MagicMock()
     instances = []
     
     # Regular chat message without ./ prefix
-    await parse_message("Hello world", mc, workspace, instances)
+    await parse_message("Hello world", mc, workspace, instances, workflow)
     
     # Nothing should be called
     workspace.post_command.assert_not_called()
@@ -171,6 +177,7 @@ async def test_parse_message_builder_bot():
     """Test parsing command for BuilderBot"""
     mc = MagicMock()
     workspace = MagicMock()
+    workflow = MagicMock()
     
     class MockBot:
         pass
@@ -179,9 +186,35 @@ async def test_parse_message_builder_bot():
     builder_instance.__class__.__name__ = "BuilderBot"
     instances = [builder_instance]
     
-    await parse_message("./builder plan list", mc, workspace, instances)
+    await parse_message("./builder plan list", mc, workspace, instances, workflow)
     
     workspace.post_command.assert_called_once()
     args, _ = workspace.post_command.call_args
     assert args[0] == "BuilderBot"
     assert args[1]["payload"]["action"] == "plan"
+
+
+@pytest.mark.asyncio
+async def test_parse_message_workflow_help():
+    """Test parsing workflow help command"""
+    mc = MagicMock()
+    workspace = MagicMock()
+    workflow = MagicMock()
+    instances = []
+    
+    await parse_message("./workflow help", mc, workspace, instances, workflow)
+    
+    workflow.help.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_parse_message_workflow_stop():
+    """Test parsing workflow stop command"""
+    mc = MagicMock()
+    workspace = MagicMock()
+    workflow = MagicMock()
+    instances = []
+    
+    await parse_message("./workflow stop", mc, workspace, instances, workflow)
+    
+    workflow.stop.assert_called_once()
