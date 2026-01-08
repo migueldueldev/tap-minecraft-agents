@@ -1,5 +1,6 @@
 import json
 import datetime
+from utils import validate_message
 
 class SharedWorkspace:
     # Message types observed by workflow
@@ -29,6 +30,13 @@ class SharedWorkspace:
                 observer.receive_command(command_data)
     
     def post_message(self, message):
+        try:
+            validate_message(message)
+        except Exception as e:
+            print(f"Error: Invalid message format: {e}")
+            self.log_event("INVALID_MESSAGE_ERROR", message.get('source', 'SharedWorkspace'), {"error": str(e), "message": message})
+            return
+
         self.log_event("MESSAGE_POSTED", message.get('source'), message)
         target = message.get('target')
         msg_type = message.get('type', '')

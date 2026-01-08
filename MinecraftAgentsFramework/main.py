@@ -2,6 +2,7 @@
 from mcpi.minecraft import Minecraft
 from SharedWorkspace import SharedWorkspace
 from Workflow import Workflow
+from utils import create_command
 import pkgutil
 import importlib
 import os
@@ -71,22 +72,10 @@ async def parse_message(message, mc, workspace, instances, workflow):
             mc.postToChat(f'Action "{action}" not valid for agent "{agent}"')
             return
         
-        timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"
-        
-        command = {
-            "type": "command.control.v1",
-            "source": "User",
-            "target": agent_class_name,
-            "timestamp": timestamp,
-            "payload": {
-                "action": action,
-                "parameters": parse_parameters(parameters)
-            },
-            "status": "SUCCESS",
-            "context": {
-                "task_id": str(id(asyncio.current_task()))
-            }
+        context = {
+            "task_id": str(id(asyncio.current_task()))
         }
+        command = create_command("User", agent_class_name, action, parse_parameters(parameters), context)
 
         workspace.post_command(agent_class_name, command)
         print(f'Command "{action} {parameters}" sent to agent "{agent}"')

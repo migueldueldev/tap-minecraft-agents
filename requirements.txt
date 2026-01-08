@@ -4,3 +4,4 @@ nbt
 pytest
 pytest-cov
 pytest-asyncio
+jsonschema

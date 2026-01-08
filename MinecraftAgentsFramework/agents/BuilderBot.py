@@ -1,4 +1,5 @@
 from BaseAgent import BaseAgent, AgentState
+from utils import create_message
 from functools import reduce
 import mcpi.block as block
 from nbt import nbt
@@ -194,44 +195,52 @@ class BuilderBot(BaseAgent):
         if self.requirements_published:
             self.mc.postToChat("Builder agent is still waiting for materials from mining")
             return
+        
+        # Calculate target build position for Miner coordination
+        reference_position = self._find_build_position()
+        
         self.requirements_published = True
-        timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"
-        self.workspace.post_message({
-            "type": "materials.requirements.v1",
-            "source": self.__class__.__name__,
-            "target": "MinerBot",
-            "timestamp": timestamp,
-            "payload": {
-                "requirements": pending
-            },
-            "status": "PENDING",
-            "context": {
-                "task_id": str(id(self.pda_task)) if self.pda_task else None,
-                "state": self.state.value
-            }
-        })
+        context = {
+            "task_id": str(id(self.pda_task)) if self.pda_task else None,
+            "state": self.state.value
+        }
+        
+        payload = {"requirements": pending}
+        if reference_position:
+            payload["reference_position"] = reference_position
+
+        message = create_message(
+            "materials.requirements.v1", 
+            self.__class__.__name__, 
+            "MinerBot", 
+            payload,
+            status="PENDING",
+            context=context
+        )
+        self.workspace.post_message(message)
         self.mc.postToChat(f"Builder agent has sent Bill Of Materials for mining ({len(pending)} block types)")
 
     def _publish_progress(self, status: str):
         """Publish build progress to Miner Bot"""
         total = sum(len(l) for l in self.structured_blocks.values())
         placed = sum(len(self.structured_blocks.get(y, [])) for y in sorted(self.structured_blocks)[:self.checkpoint["layer"]]) + self.checkpoint["block_idx"]
-        timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"
-        self.workspace.post_message({
-            "type": "build.v1",
-            "source": self.__class__.__name__,
-            "target": "MinerBot",
-            "timestamp": timestamp,
-            "payload": {
+        
+        context = {
+            "task_id": str(id(self.pda_task)) if self.pda_task else None,
+            "state": self.state.value
+        }
+        message = create_message(
+            "build.v1",
+            self.__class__.__name__,
+            "MinerBot",
+            {
                 "plan": self.current_plan,
                 "progress": {"placed": placed, "total": total}
             },
-            "status": status,
-            "context": {
-                "task_id": str(id(self.pda_task)) if self.pda_task else None,
-                "state": self.state.value
-            }
-        })
+            status=status,
+            context=context
+        )
+        self.workspace.post_message(message)
 
     async def _execute_build_process(self):
         """Place blocks layer by layer with checkpoints"""

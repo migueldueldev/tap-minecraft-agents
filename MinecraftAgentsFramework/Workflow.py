@@ -1,5 +1,6 @@
 from typing import Optional, Callable
 from functools import reduce
+from utils import create_message, create_command
 import datetime
 import asyncio
 
@@ -68,22 +69,11 @@ def process_message(state: WorkflowState, message: dict) -> WorkflowState:
 
 def build_command(target: str, action: str, parameters: dict, stage: int) -> dict:
     """Build a command message for an agent."""
-    timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"
-    return {
-        "type": "command.control.v1",
-        "source": "Workflow",
-        "target": target,
-        "timestamp": timestamp,
-        "payload": {
-            "action": action,
-            "parameters": parameters
-        },
-        "status": "SUCCESS",
-        "context": {
-            "task_id": str(id(asyncio.current_task())),
-            "workflow_stage": stage
-        },
+    context = {
+        "task_id": str(id(asyncio.current_task())),
+        "workflow_stage": stage
     }
+    return create_command("Workflow", target, action, parameters, context=context)
 
 def build_exploration_params(config: WorkflowConfig) -> dict:
     """Build exploration parameters from configuration."""
@@ -244,9 +234,25 @@ class Workflow:
         await asyncio.sleep(0.5)
         start_params = {k: v for k, v in params.items() if k != "strategy"}
         self._send_command("MinerBot", "start", start_params)
-        await asyncio.sleep(0.5)
-        self._send_command("MinerBot", "fulfill", {})
         self.mc.postToChat(f"[Workflow] Miner collecting (strategy={self.config.miner_strategy} x={self.config.miner_x} y={self.config.miner_y} z={self.config.miner_z})")
+
+        # Wait up to 20 seconds for completion, otherwise fulfill
+        start_time = asyncio.get_event_loop().time()
+        timeout = 20.0
+        
+        while not self.state.mining_complete:
+            # Check timeout
+            if asyncio.get_event_loop().time() - start_time > timeout:
+                self.mc.postToChat(f"[Workflow] Mining time limit ({timeout}s) reached. Auto-fulfilling requirements.")
+                self._send_command("MinerBot", "fulfill", {})
+                break
+            
+            if self.should_stop:
+                break
+
+            # Process messages to detect completion early!
+            await self._process_messages()
+            await asyncio.sleep(0.5)
 
     async def _stage_building(self):
         """Stage 4: BuilderBot constructs the structure."""

@@ -1,4 +1,5 @@
 from BaseAgent import BaseAgent
+from utils import create_message
 from collections import defaultdict
 from mcpi.minecraft import Minecraft
 import mcpi.block as block
@@ -256,22 +257,18 @@ class ExplorerBot(BaseAgent):
                 "depth": region['depth']
             })
 
-        timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"
-
-        message = {
-            "type": "map.v1",
-            "source": "ExplorerBot",
-            "target": "BuilderBot",
-            "timestamp": timestamp,
-            "payload": {
-                "regions": regions_payload
-            },
-            "status": "SUCCESS",
-            "context": {
-                "task_id": str(id(self.pda_task)) if self.pda_task else None,
-                "state": self.state.value
-            }
+        context = {
+            "task_id": str(id(self.pda_task)) if self.pda_task else None,
+            "state": self.state.value
         }
+        message = create_message(
+            "map.v1", 
+            "ExplorerBot", 
+            "BuilderBot", 
+            {"regions": regions_payload}, 
+            status="SUCCESS",
+            context=context
+        )
         return message
 
     def stop(self):

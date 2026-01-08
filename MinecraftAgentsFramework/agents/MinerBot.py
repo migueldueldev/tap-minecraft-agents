@@ -1,10 +1,16 @@
 from BaseAgent import BaseAgent, AgentState
+from utils import create_message
 from mcpi.minecraft import Minecraft
 from functools import reduce
 import mcpi.block as block
 import datetime
 import asyncio
-from agents.MiningStrategy import MiningStrategy, VerticalSearchStrategy, GridSearchStrategy, VeinSearchStrategy
+import pkgutil
+import importlib
+import os
+import sys
+from strategies.MiningStrategy import MiningStrategy
+
 
 # Materials that are provided automatically and do not need to be mined
 AUTO_PROVIDED_MATERIALS = [
@@ -53,36 +59,107 @@ class MinerBot(BaseAgent):
         self.ready_to_mine = False
         self.mining_event = asyncio.Event()
         self.blocks = self.get_block_names()
-        self.strategy_map = {
-            "vertical": VerticalSearchStrategy,
-            "grid": GridSearchStrategy,
-            "vein": VeinSearchStrategy
-        }
+        self.strategy_map = self.load_strategies()
+
+    def load_strategies(self):
+        """Dynamically load mining strategies using reflection"""
+
+        strategies_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "strategies")
+        
+        # Ensure the parent directory is in sys.path so we can import strategies
+        parent_dir = os.path.dirname(os.path.dirname(__file__))
+        if parent_dir not in sys.path:
+            sys.path.append(parent_dir)
+
+        # Scan and import modules
+        for module in pkgutil.iter_modules([strategies_dir]):
+            if module.name == "MiningStrategy": 
+                continue 
+            importlib.import_module(f"strategies.{module.name}")
+
+        strategies = {}
+        for subclass in MiningStrategy.__subclasses__():
+            try:
+                # Instantiate temporarily to get the name 
+                temp_instance = subclass(self.mc, self.__class__.__name__, self.workspace, agent=self)
+                strategy_name = temp_instance.get_strategy_name().lower()
+                
+                strategies[strategy_name] = subclass
+                strategies[strategy_name.replace("search", "")] = subclass # Alias
+                print(f"MinerBot: Loaded strategy '{strategy_name}'")
+            except Exception as e:
+                print(f"MinerBot: Error registering strategy {subclass.__name__}: {e}")
+        
+        return strategies
 
     async def perceive(self, **kwargs):
-        messages = self.get_messages()
-        
-        for message in messages:
-            message_type = message.get("type")
-            
-            if message_type == "materials.requirements.v1":
-                self.handle_material_requirements(message)
-
         pos = self.mc.player.getTilePos()
-        self.x = kwargs.get("x", pos.x)
-        self.z = kwargs.get("z", pos.z)
-        self.y = kwargs.get("y", pos.y)
+        user_x = kwargs.get("x")
+        user_z = kwargs.get("z")
+        self.y = kwargs.get("y", 5)
+        self.range = kwargs.get("range", 32)
         
         self.kwargs_strategy = kwargs.get("strategy", self.mining_strategy_name)
         if self.kwargs_strategy:
             self.mining_strategy_name = self.kwargs_strategy
 
-        self.coords = {"x": self.x, "y": self.y, "z": self.z, "strategy": self.mining_strategy_name}
+        messages = self.get_messages()
+        for message in messages:
+            message_type = message.get("type")
+            if message_type == "materials.requirements.v1":
+                self.handle_material_requirements(message)
+
+        # Coordinate Logic: Explicit > Reference > Player
+        if user_x is not None and user_z is not None:
+             self.x = user_x
+             self.z = user_z
+        elif hasattr(self, "reference_position") and self.reference_position:
+             ref_x, ref_y, ref_z = self.reference_position
+             offset = 16
+             if self.mining_strategy_name.lower() == "grid":
+                 offset += self.range
+             
+             # Subtract offset to ensure we mine before the building start (avoiding width collision)
+             self.x = int(ref_x - offset)
+             self.z = int(ref_z)
+             
+             # If using VeinSearch, ensure we mine away from the building (towards -X)
+             # because we are positioned at the left (negative side) of the building.
+             if self.mining_strategy_name.lower() == "vein":
+                 self.direction_x = -1
+             else:
+                 self.direction_x = 1
+
+             self.mc.postToChat(f"MinerBot: Safety offset applied. Mining at ({self.x}, {self.z}) DirX:{self.direction_x}")
+        else:
+             self.x = pos.x
+             self.z = pos.z
+             self.direction_x = 1
+
+        # Target y must be below surface
+        # We only check this if y was explicitly provided or if we risk mining air
+        surface_y = self.mc.getHeight(self.x, self.z)
+        if self.y > surface_y:
+            error_msg = f"MinerBot Error: Target Y ({self.y}) is higher than surface ({surface_y}) at ({self.x}, {self.z})"
+            if self.state != AgentState.ERROR:
+                self.mc.postToChat(error_msg)
+                self.set_state(AgentState.ERROR, error_msg)
+
+        self.coords = {
+            "x": self.x, 
+            "y": self.y, 
+            "z": self.z, 
+            "range": self.range,
+            "direction_x": self.direction_x,
+            "strategy": self.mining_strategy_name
+        }
         
         return self.coords
 
     async def decide(self, **kwargs):
-        target_class = self.strategy_map.get(self.mining_strategy_name.lower(), VerticalSearchStrategy)
+        target_class = self.strategy_map.get(self.mining_strategy_name.lower())
+        if not target_class and "vertical" in self.strategy_map:
+             target_class = self.strategy_map["vertical"]
         
         if self.current_bom:
             if self.mining_strategy is None or not isinstance(self.mining_strategy, target_class):
@@ -121,8 +198,11 @@ class MinerBot(BaseAgent):
             return
         
         if not self.mining_position:
-            pos = self.mc.player.getTilePos()
-            self.mining_position = (pos.x, self.y, pos.z)
+            if self.x is not None and self.z is not None:
+                self.mining_position = (self.x, self.y, self.z)
+            else:
+                pos = self.mc.player.getTilePos()
+                self.mining_position = (pos.x, self.y, pos.z)
         
         if not self.is_mining:
             self.is_mining = True
@@ -185,9 +265,10 @@ class MinerBot(BaseAgent):
                         self.inventory[material] += quantity
                     self.convert_ores_to_blocks()
                 
-                self.send_inventory_update(complete=False)
+                is_fulfilled = self.requirements_fulfilled()
+                self.send_inventory_update(complete=is_fulfilled)
                 
-                if not self.requirements_fulfilled() and not self.should_stop and self.state != AgentState.PAUSED:
+                if not is_fulfilled and not self.should_stop and self.state != AgentState.PAUSED:
                     if mining_task in done:
                         self.mc.postToChat("MinerBot: Mining finished here. Requirements not met. Execute fulfill again.") 
                         self.mining_position = None
@@ -228,6 +309,10 @@ class MinerBot(BaseAgent):
                     self.ready_to_mine = True
                     self.mc.postToChat("MinerBot: Resuming mining execution...")
                 return True
+            elif action == "start":
+                self.ready_to_mine = True
+                self.mc.postToChat("MinerBot: Starting mining execution...")
+                return True
             return True
     
         if action == "set":
@@ -247,17 +332,22 @@ class MinerBot(BaseAgent):
                     self.mc.postToChat(f"Invalid strategy: {strategy}. Use vertical, grid, or vein.")
             return True
         elif action == "fulfill":
-            self.ready_to_mine = True
-            self.mc.postToChat("MinerBot: Starting mining execution...")
+            self.mc.postToChat("MinerBot: Fulfilling all requirements (Simulation mode)...")
+            
+            # Fill inventory with all missing requirements
+            for material, qty in self.material_requirements.items():
+                self.inventory[material] = qty
+            
+            # If mining is in progress, interrupt it so the agent can check requirements in the next loop
+            if self.is_mining:
+                 self.mining_event.set()
+            else:
+                 # Check requirements in the next loop even if not mining
+                 self.ready_to_mine = True
+                 
             return True
         elif action == "test":
-            fake_message = {
-                "type": "materials.requirements.v1",
-                "source": "User",
-                "payload": {
-                    "requirements": parameters
-                }
-            }
+            fake_message = create_message("materials.requirements.v1", "User", self.__class__.__name__, {"requirements": parameters})
             self.handle_material_requirements(fake_message)
             return True
             
@@ -266,6 +356,8 @@ class MinerBot(BaseAgent):
     def handle_material_requirements(self, message):
         payload = message.get("payload", {})
         requirements = payload.get("requirements", {})
+        self.reference_position = payload.get("reference_position")
+        
         self.material_requirements = requirements
         self.current_bom = message
         self.mining_position = None
@@ -281,12 +373,16 @@ class MinerBot(BaseAgent):
             {
                 "source": message.get("source"),
                 "requirements": self.material_requirements,
+                "reference_position": self.reference_position
             }
         )
         
         minable_reqs = self.get_minable_requirements()
         if minable_reqs:
-            self.mc.postToChat(f"MinerBot: Received requirements for {len(minable_reqs)} minable materials")
+            msg = f"MinerBot: Received requirements for {len(minable_reqs)} materials."
+            if self.reference_position:
+                msg += " Found build reference."
+            self.mc.postToChat(msg)
         
     def get_minable_requirements(self) -> dict:
         remaining = {m: max(0, q - self.inventory.get(m, 0)) for m, q in self.material_requirements.items() if m not in AUTO_PROVIDED_MATERIALS}
@@ -354,22 +450,19 @@ class MinerBot(BaseAgent):
         all_collected = all(self.inventory.get(mat, 0) >= qty for mat, qty in self.material_requirements.items())
         status = "COMPLETED" if all_collected else "IN_PROGRESS"
 
-        timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"
-
-        message = {
-            "type": "inventory.v1",
-            "source": "MinerBot",
-            "target": "BuilderBot",
-            "timestamp": timestamp,
-            "payload": {
-                "materials": progress_payload
-            },
-            "status": status,
-            "context": {
-                "task_id": str(id(self.pda_task)) if self.pda_task else None,
-                "state": self.state.value
-            }
+        context = {
+            "task_id": str(id(self.pda_task)) if self.pda_task else None,
+            "state": self.state.value
         }
+
+        message = create_message(
+            "inventory.v1", 
+            "MinerBot", 
+            "BuilderBot", 
+            {"materials": progress_payload}, 
+            status=status,
+            context=context
+        )
         return message
     
     def set_state(self, new_state: AgentState, reason: str = None):
@@ -380,15 +473,10 @@ class MinerBot(BaseAgent):
             if self.mining_strategy:
                 self.mining_strategy.release_all_locks()
             
-            notification = {
-                "type": "state_change.v1",
-                "source": self.__class__.__name__,
-                "target": "BuilderBot",
-                "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z",
-                "payload": {
-                    "previous_state": old_state.value,
-                    "new_state": new_state.value,
-                    "reason": reason
-                }
+            payload = {
+                "previous_state": old_state.value,
+                "new_state": new_state.value,
+                "reason": reason
             }
+            notification = create_message("state_change.v1", self.__class__.__name__, "BuilderBot", payload)
             self.workspace.post_message(notification)
