@@ -196,6 +196,8 @@ class MinerBot(BaseAgent):
         if self.requirements_fulfilled():
             self.send_inventory_update(complete=True)
             self.mc.postToChat(f"MinerBot: All requirements fulfilled!")
+            end = datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"
+            self.workspace.log_event("MINING_COMPLETED", self.__class__.__name__, {"timestamp": end})
             self.current_bom = None
             self.is_mining = False
             self.ready_to_mine = False
@@ -368,9 +370,18 @@ class MinerBot(BaseAgent):
         requirements = payload.get("requirements", {})
         self.reference_position = payload.get("reference_position")
         
+        # Track if we were actively mining to auto resume with new requirements
+        was_mining = self.is_mining
+        
+        # Interrupt current mining if new requirements arrive
+        if self.is_mining:
+            self.mining_event.set()
+            self.mc.postToChat("MinerBot: Adjusting targets for new requirements")
+        
         self.material_requirements = requirements
         self.current_bom = message
         self.mining_position = None
+        self.inventory.clear()
         
         # Auto provide materials that do not need mining
         for material, qty in requirements.items():
@@ -393,6 +404,11 @@ class MinerBot(BaseAgent):
             if self.reference_position:
                 msg += " Found build reference."
             self.mc.postToChat(msg)
+            
+            # Auto start mining if agent was previously started or was actively mining
+            if was_mining or self.args:
+                self.ready_to_mine = True
+                self.mc.postToChat("MinerBot: Auto started mining with new requirements")
         
     def get_minable_requirements(self) -> dict:
         """Calculate remaining minable ore requirements from material list."""

@@ -84,6 +84,8 @@ class BuilderBot(BaseAgent):
     async def decide(self, **kwargs):
         """Decide next agent state based on conditions"""
         if not self.current_plan:
+            if self.state == AgentState.RUNNING:
+                self.set_state(AgentState.IDLE, "No active build task")
             return
         if not self._materials_ready() and self.state != AgentState.WAITING:
             self.set_state(AgentState.WAITING, "Waiting materials for building")
@@ -262,15 +264,21 @@ class BuilderBot(BaseAgent):
             bx, by, bz = self.build_position
 
             for layer_id, y_coord in enumerate(sorted_y[self.checkpoint["layer"]:], self.checkpoint["layer"]):
+                # Check if build was stopped before accessing layer data
+                if not self.is_building:
+                    end = datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"
+                    self.workspace.log_event("BUILD_HALTED", self.__class__.__name__, {"timestamp": end, "reason": "plan_update"})
+                    return
+                
                 block_start_index = self.checkpoint["block_idx"] if layer_id == self.checkpoint["layer"] else 0
                 for block_idx, blk in enumerate(self.structured_blocks[y_coord][block_start_index:], block_start_index):
-                    # Save build progress if agent is paused or stopped
-                    if self.state == AgentState.PAUSED or self.should_stop:
+                    # Save build progress if agent is paused, stopped or build was stopped externally
+                    if self.state == AgentState.PAUSED or self.should_stop or not self.is_building:
                         self.checkpoint = {"layer": layer_id, "block_idx": block_idx}
                         self._save_checkpoint()
                         self.is_building = False
                         end = datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"
-                        self.workspace.log_event("BUILD_COMPLETED", self.__class__.__name__, {"timestamp": end})
+                        self.workspace.log_event("BUILD_FINISHED", self.__class__.__name__, {"timestamp": end})
                         return
 
                     # Place blocks one by one
@@ -291,6 +299,7 @@ class BuilderBot(BaseAgent):
             self.inventory.clear()
             self.build_position = None
             self.checkpoint = {"layer": 0, "block_idx": 0}
+            self.current_plan = None
 
         except Exception as e:
             self.workspace.log_event("BUILD_ERROR", self.__class__.__name__, {"error": str(e)})
@@ -324,6 +333,13 @@ class BuilderBot(BaseAgent):
         template = params.get("set")
         if template:
             try:
+                # Stop current build if in progress and clear terrain data (terrain has changed)
+                if self.is_building:
+                    self.is_building = False
+                    self.terrain_data = None
+                    self.set_state(AgentState.WAITING, "Plan updated. Stopping current build")
+                    self.mc.postToChat("Build stopped due to plan update. New exploration required.")
+                
                 self.structured_blocks = self._structure_blocks(self._load_schematic(template))
                 self.bom = self._compute_bom()
                 self.current_plan = template
