@@ -1,4 +1,4 @@
-from BaseAgent import BaseAgent, AgentState
+from base_agent import BaseAgent, AgentState
 from utils import create_message
 from functools import reduce
 import mcpi.block as block

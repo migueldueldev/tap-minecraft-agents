@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from agents.MinerBot import MinerBot
-from BaseAgent import AgentState
+from agents.miner_bot import MinerBot
+from base_agent import AgentState
 
 class MockPos:
     def __init__(self, x=0, y=0, z=0):

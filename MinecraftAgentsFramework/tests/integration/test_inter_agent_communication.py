@@ -15,8 +15,8 @@ import json
 from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import datetime, timezone
 
-from BaseAgent import BaseAgent, AgentState
-from SharedWorkspace import SharedWorkspace
+from base_agent import BaseAgent, AgentState
+from shared_workspace import SharedWorkspace
 
 
 class MockMinecraft:

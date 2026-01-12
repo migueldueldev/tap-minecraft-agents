@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from unittest.mock import MagicMock, patch, AsyncMock
-from agents.ExplorerBot import ExplorerBot
+from agents.explorer_bot import ExplorerBot
 import mcpi.block as block
 
 @pytest.fixture
@@ -17,7 +17,7 @@ def mock_workspace():
 @pytest.fixture
 def bot(mock_mc, mock_workspace):
     # Mocking BaseAgent which is the parent of ExplorerBot
-    with patch('agents.ExplorerBot.BaseAgent', autospec=True):
+    with patch('agents.explorer_bot.BaseAgent', autospec=True):
         bot_instance = ExplorerBot(mock_mc, mock_workspace)
         # Mocking the state enum behavior
         bot_instance.state = MagicMock()

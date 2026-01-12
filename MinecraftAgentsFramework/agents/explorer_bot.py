@@ -1,4 +1,4 @@
-from BaseAgent import BaseAgent
+from base_agent import BaseAgent
 from utils import create_message
 from collections import defaultdict
 from mcpi.minecraft import Minecraft

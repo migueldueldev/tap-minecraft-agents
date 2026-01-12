@@ -15,12 +15,12 @@ import threading
 from unittest.mock import MagicMock, patch, AsyncMock
 from concurrent.futures import ThreadPoolExecutor
 
-from strategies.MiningStrategy import MiningStrategy
-from strategies.VerticalSearchStrategy import VerticalSearchStrategy
-from strategies.GridSearchStrategy import GridSearchStrategy
-from strategies.VeinSearchStrategy import VeinSearchStrategy
-from BaseAgent import AgentState
-from SharedWorkspace import SharedWorkspace
+from strategies.mining_strategy import MiningStrategy
+from strategies.vertical_search_strategy import VerticalSearchStrategy
+from strategies.grid_search_strategy import GridSearchStrategy
+from strategies.vein_search_strategy import VeinSearchStrategy
+from base_agent import AgentState
+from shared_workspace import SharedWorkspace
 
 
 class MockMinecraft:

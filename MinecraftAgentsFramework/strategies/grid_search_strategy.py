@@ -1,4 +1,4 @@
-from .MiningStrategy import MiningStrategy
+from .mining_strategy import MiningStrategy
 import asyncio
 
 class GridSearchStrategy(MiningStrategy):

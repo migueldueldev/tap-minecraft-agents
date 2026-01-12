@@ -1,4 +1,4 @@
-from .MiningStrategy import MiningStrategy
+from .mining_strategy import MiningStrategy
 import asyncio
 from collections import deque
 

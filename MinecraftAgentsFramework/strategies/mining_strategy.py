@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from BaseAgent import AgentState
+from base_agent import AgentState
 import datetime
 import mcpi.block as block
 

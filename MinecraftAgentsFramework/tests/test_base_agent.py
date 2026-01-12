@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from unittest.mock import MagicMock, patch
-from BaseAgent import BaseAgent, AgentState
+from base_agent import BaseAgent, AgentState
 
 class MockAgent(BaseAgent):
     async def perceive(self, **kwargs):

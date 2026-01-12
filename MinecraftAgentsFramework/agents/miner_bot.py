@@ -1,4 +1,4 @@
-from BaseAgent import BaseAgent, AgentState
+from base_agent import BaseAgent, AgentState
 from utils import create_message
 from mcpi.minecraft import Minecraft
 from functools import reduce
@@ -9,7 +9,7 @@ import pkgutil
 import importlib
 import os
 import sys
-from strategies.MiningStrategy import MiningStrategy
+from strategies.mining_strategy import MiningStrategy
 
 
 # Materials that are provided automatically and do not need to be mined

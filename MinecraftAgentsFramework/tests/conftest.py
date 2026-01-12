@@ -31,7 +31,7 @@ def event_loop():
 @pytest.fixture(autouse=True)
 def reset_workflow_singleton():
     """Reset the Workflow singleton before and after each test for isolation."""
-    from Workflow import Workflow
+    from workflow import Workflow
     Workflow._instance = None
     yield
     Workflow._instance = None

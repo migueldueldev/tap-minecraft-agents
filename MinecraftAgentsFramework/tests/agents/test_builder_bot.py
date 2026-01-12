@@ -1,8 +1,8 @@
 import pytest
 import asyncio
 from unittest.mock import MagicMock, patch, AsyncMock
-from agents.BuilderBot import BuilderBot
-from BaseAgent import AgentState
+from agents.builder_bot import BuilderBot
+from base_agent import AgentState
 
 @pytest.fixture
 def mock_mc():

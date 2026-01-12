@@ -2,7 +2,7 @@ import pytest
 import json
 import os
 from unittest.mock import MagicMock, mock_open, patch
-from SharedWorkspace import SharedWorkspace
+from shared_workspace import SharedWorkspace
 
 
 class AgentA:

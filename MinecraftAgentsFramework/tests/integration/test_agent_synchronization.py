@@ -16,8 +16,8 @@ import time
 from unittest.mock import MagicMock, patch, AsyncMock
 from concurrent.futures import ThreadPoolExecutor
 
-from BaseAgent import BaseAgent, AgentState
-from SharedWorkspace import SharedWorkspace
+from base_agent import BaseAgent, AgentState
+from shared_workspace import SharedWorkspace
 
 
 class ConcreteTestAgent(BaseAgent):

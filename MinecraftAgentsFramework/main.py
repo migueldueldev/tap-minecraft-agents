@@ -1,13 +1,13 @@
 # Import necessary modules
 from mcpi.minecraft import Minecraft
-from SharedWorkspace import SharedWorkspace
-from Workflow import Workflow
+from shared_workspace import SharedWorkspace
+from workflow import Workflow
 from utils import parse_message, find_agent
 import pkgutil
 import importlib
 import os
 import asyncio
-from BaseAgent import BaseAgent
+from base_agent import BaseAgent
 
 def connect_mc() -> Minecraft:
     """Connect to the Minecraft server"""
