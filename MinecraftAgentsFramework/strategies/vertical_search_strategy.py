@@ -2,14 +2,21 @@ from .mining_strategy import MiningStrategy
 import asyncio
 
 class VerticalSearchStrategy(MiningStrategy):
+    """
+    Mining strategy that mines a single vertical column from surface to target depth.
+    Simple and efficient for targeted mining at a specific location.
+    """
     def __init__(self, mc, agent_id, workspace, agent=None):
+        """Initialize the strategy with bedrock level boundary."""
         super().__init__(mc, agent_id, workspace, agent=agent)
         self.bedrock_level = 5 
     
     def get_strategy_name(self) -> str:
+        """Return the strategy name identifier."""
         return "VerticalSearch"
     
     async def mine(self, requirements: dict, start_position: tuple, current_position: dict, coords: dict) -> dict:
+        """Mine a single column from start position down to target depth."""
         self.collected_materials.clear()
         x, target_y, z = start_position
         current_y = self.mc.getHeight(x, z)
@@ -80,6 +87,7 @@ class VerticalSearchStrategy(MiningStrategy):
         return self.collected_materials
     
     async def mine_column(self, x: int, start_y: int, z: int, target_y: int, requirements: dict, current_position: dict):
+        """Mine blocks in a column from initial height down to target depth."""
         blocks_checked = 0
         for y in range(start_y, target_y - 1, -1):
             await asyncio.sleep(0)

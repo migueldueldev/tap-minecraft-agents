@@ -33,6 +33,7 @@ def load_agents(mc, workspace) -> list:
     return instances
 
 async def read_chat_events(mc, workspace, instances, workflow):
+    """Continuously poll and process chat events from the Minecraft server."""
     while True:
         chat_events = mc.events.pollChatPosts()
         for event in chat_events:
@@ -41,6 +42,7 @@ async def read_chat_events(mc, workspace, instances, workflow):
         await asyncio.sleep(0.1)
 
 async def main():
+    """Initialize the Minecraft Agents Framework and start the main event loop."""
     mc = connect_mc()
     workspace = SharedWorkspace()
     instances = load_agents(mc, workspace)

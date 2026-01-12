@@ -8,6 +8,10 @@ import asyncio
 import os
 
 class BuilderBot(BaseAgent):
+    """
+    Agent responsible for loading schematic templates and constructing structures.
+    Manages Bill of Materials (BOM), coordinates with mining agent for resources and places blocks layer by layer.
+    """
     # Block mapping from Minecraft IDs to Mcpi block types
     BLOCK_MAP = {
         0: "AIR", 1: "STONE", 2: "GRASS",
@@ -45,6 +49,7 @@ class BuilderBot(BaseAgent):
     })
 
     def __init__(self, mc, workspace):
+        """Initialize the builder with plan and inventory state."""
         super().__init__(mc, workspace)
         self.mc = mc
         self.workspace = workspace
@@ -121,6 +126,7 @@ class BuilderBot(BaseAgent):
         block_data = schem.get('Data', [])
         
         def block_at(x, y, z):
+            """Get block data at the specified schematic coordinates."""
             idx = (y * l + z) * w + x
             if idx >= len(blocks):
                 return None
@@ -146,6 +152,7 @@ class BuilderBot(BaseAgent):
                 if material not in self.AUTO_PROVIDED and amount > self.inventory.get(material, 0)}
 
     def _materials_ready(self) -> bool:
+        """Check if all required materials have been collected."""
         return not self._pending_materials()
 
     def _find_build_position(self) -> tuple:
@@ -183,6 +190,7 @@ class BuilderBot(BaseAgent):
         return (origin["x"], best_region["y"], origin["z"])
     
     def _save_checkpoint(self):
+        """Save current build progress to the workspace log."""
         self.workspace.log_event("CHECKPOINT", self.__class__.__name__, {
             "plan": self.current_plan, **self.checkpoint, "inventory": self.inventory
         })
@@ -291,6 +299,7 @@ class BuilderBot(BaseAgent):
             self.is_building = False
     
     def handle_command(self, command):
+        """Process builder-specific commands for plan management and building."""
         payload = command.get("payload", {})
         action, params = payload.get("action"), payload.get("parameters", {})
 
@@ -363,6 +372,7 @@ class BuilderBot(BaseAgent):
         self.mc.postToChat(f"Builder agent has started building the structure at {self.build_position}")
 
     def help(self):
+        """Display available commands for the builder agent."""
         for line in [
             f"Agent {self.__class__.__name__} help commands:",
             "  ./builder plan list                  - List schematics",

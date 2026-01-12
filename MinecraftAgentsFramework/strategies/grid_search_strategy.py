@@ -2,14 +2,21 @@ from .mining_strategy import MiningStrategy
 import asyncio
 
 class GridSearchStrategy(MiningStrategy):
+    """
+    Mining strategy that systematically mines a grid area from surface to target depth.
+    Covers a square region around a center point for comprehensive material gathering.
+    """
     def __init__(self, mc, agent_id, workspace, agent=None):
+        """Initialize the strategy with bedrock level boundary."""
         super().__init__(mc, agent_id, workspace, agent=agent)
         self.bedrock_level = 5
     
     def get_strategy_name(self) -> str:
+        """Return the strategy name identifier."""
         return "GridSearch"
     
     async def mine(self, requirements: dict, start_position: tuple, current_position: dict, coords: dict) -> dict:
+        """Mine a grid area systematically from surface down to target depth."""
         self.collected_materials.clear()
         
         center_x, target_y, center_z = start_position

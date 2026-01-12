@@ -4,10 +4,15 @@ import os
 from utils import validate_message
 
 class SharedWorkspace:
+    """
+    Central communication hub for inter-agent messaging and event logging.
+    Manages observer registration, command/message dispatching and log file persistence.
+    """
     # Message types observed by workflow
     WORKFLOW_OBSERVABLE = set({'map.v1', 'materials.requirements.v1', 'inventory.v1', 'build.v1'})
     
     def __init__(self):
+        """Initialize the workspace with logging infrastructure and empty observer list."""
         self.observers = []
         self.workflow_observer = None
         
@@ -21,6 +26,7 @@ class SharedWorkspace:
         self.log_file = os.path.join(logs_dir, log_filename)
     
     def register_observer(self, observer):
+        """Register an agent as an observer to receive commands and messages."""
         if observer not in self.observers:
             self.observers.append(observer)
     
@@ -29,16 +35,19 @@ class SharedWorkspace:
         self.workflow_observer = workflow
             
     def remove_observer(self, observer):
+        """Remove an agent from the observer list."""
         if observer in self.observers:
             self.observers.remove(observer)
 
     def post_command(self, agent_name, command_data):
+        """Send a command to a specific agent by name."""
         self.log_event("COMMAND_POSTED", agent_name, command_data)
         for observer in self.observers:
             if observer.__class__.__name__ == agent_name:
                 observer.receive_command(command_data)
     
     def post_message(self, message):
+        """Broadcast a message to the target agent and notify workflow if applicable."""
         try:
             validate_message(message)
         except Exception as e:
@@ -60,6 +69,7 @@ class SharedWorkspace:
             self.workflow_observer.receive_message(message)
     
     def log_event(self, event_type, agent, data):
+        """Write an event entry with timestamp to the log file."""
         timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"
         log_entry = {
             "timestamp": timestamp,
@@ -71,6 +81,7 @@ class SharedWorkspace:
             f.write(json.dumps(log_entry) + "\n")
     
     def save_final_state(self, agents):
+        """Write the final state of all agents to the log file on system shutdown."""
         timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"
         final_state = {
             "timestamp": timestamp,

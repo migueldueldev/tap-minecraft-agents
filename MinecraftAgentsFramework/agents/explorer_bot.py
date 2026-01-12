@@ -12,7 +12,12 @@ import os
 import math
 
 class ExplorerBot(BaseAgent):
+    """
+    Agent responsible for terrain exploration and identification of stable flat regions.
+    Scans the world in a circular area and publishes map data with suitable regions for building.
+    """
     def __init__(self, mc, workspace):
+        """Initialize the explorer with scanning and visualization state."""
         super().__init__(mc, workspace)
         self.mc = mc
         self.workspace = workspace
@@ -29,6 +34,7 @@ class ExplorerBot(BaseAgent):
         self.waiting_confirmation = False
 
     async def perceive(self, **kwargs):
+        """Scan the world for terrain heights and block data within the specified area."""
         self.exploration_event.clear()
         self.has_new_scan = True
         
@@ -48,6 +54,7 @@ class ExplorerBot(BaseAgent):
         return self.heights
     
     async def decide(self, **kwargs):
+        """Analyze scanned terrain to identify stable flat regions for building."""
         if not self.has_new_scan or not self.heights:
             self.stable_regions = None
             return None
@@ -70,6 +77,7 @@ class ExplorerBot(BaseAgent):
         return self.stable_regions
 
     async def act(self, **kwargs):
+        """Publish exploration results and optionally visualize regions in the world."""
         message = None
         interrupted_by_command = False
         
@@ -120,6 +128,7 @@ class ExplorerBot(BaseAgent):
         return message
     
     def handle_command(self, command):
+        """Process explorer-specific commands including confirmation and queue management."""
         payload = command.get("payload", {})
         action = payload.get("action")
         parameters = payload.get("parameters", {})
@@ -181,6 +190,7 @@ class ExplorerBot(BaseAgent):
         return False
 
     def clear_visualization(self):
+        """Restore original blocks by removing colored wool blocks used for visualization."""
         if self.displayed_regions:
             for region in self.displayed_regions:
                 if not region['blocks']: continue
@@ -201,6 +211,7 @@ class ExplorerBot(BaseAgent):
             self.displayed_regions.clear()
 
     def update_visualization(self):
+        """Display stable regions in the world using colored wool blocks."""
         self.clear_visualization()
         
         for region in self.stable_regions:
@@ -233,6 +244,7 @@ class ExplorerBot(BaseAgent):
             except: pass
 
     def generate_message(self):
+        """Generate a map message containing all stable flat regions data."""
         self.block_names = self.get_block_names()
 
         regions_payload = []
@@ -272,10 +284,12 @@ class ExplorerBot(BaseAgent):
         return message
 
     def stop(self):
+        """Stop the explorer and clear any active visualization."""
         self.clear_visualization()
         super().stop()
         
     def generate_elevation_map(self, heights):
+        """Group coordinates by their Y elevation level."""
         elevation_map = defaultdict(list)
 
         for (x, z), y in heights.items():
@@ -284,6 +298,7 @@ class ExplorerBot(BaseAgent):
         return dict(elevation_map)
     
     def identify_flat_regions(self, elevation_map):
+        """Identify rectangular flat regions at each elevation level."""
         flat_regions = []
         
         min_x = self.x0 - self.area
@@ -327,6 +342,7 @@ class ExplorerBot(BaseAgent):
         return flat_regions
 
     def find_largest_rectangle(self, grid, rows, cols):
+        """Find the largest rectangle in a grid using histogram method."""
         max_area = 0
         largest_rect = None
         
@@ -354,6 +370,7 @@ class ExplorerBot(BaseAgent):
         return largest_rect
     
     def is_region_stable(self, region):
+        """Check if a region contains only stable (non-hazardous) blocks."""
         y = region['y']
         for x, z in region['blocks']:
             block_data = self.blocks.get((x, y, z))
@@ -362,9 +379,11 @@ class ExplorerBot(BaseAgent):
         return True
     
     def get_block_names(self):
+        """Build a mapping of block IDs to their names."""
         return {b.id: name for name, b in block.__dict__.items() if hasattr(b, "id")}
     
     def scan_chunk(self, coords, results, lock):
+        """Scan a chunk of coordinates in a separate thread."""
         try:
             mc_instance = Minecraft.create()
             chunk_heights = {}
@@ -381,6 +400,7 @@ class ExplorerBot(BaseAgent):
                 results.append(({}, {}))
 
     def scan_world(self, all_coords):
+        """Scan all coordinates using parallel threads for faster execution."""
         if not all_coords:
             return {}, {}
 

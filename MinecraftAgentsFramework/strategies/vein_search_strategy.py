@@ -3,7 +3,12 @@ import asyncio
 from collections import deque
 
 class VeinSearchStrategy(MiningStrategy):
+    """
+    Mining strategy that uses a staircase pattern and Breadth First Search (BFS) vein exploration.
+    Efficiently mines ore veins by following connected blocks of the same type.
+    """
     def __init__(self, mc, agent_id, workspace, agent=None):
+        """Initialize the strategy with vein tracking and staircase pattern state."""
         super().__init__(mc, agent_id, workspace, agent=agent)
         self.max_vein_size = 20
         self.visited = set()
@@ -12,9 +17,11 @@ class VeinSearchStrategy(MiningStrategy):
         self.veins_found = 0
     
     def get_strategy_name(self) -> str:
+        """Return the strategy name identifier."""
         return "VeinSearch"
     
     async def mine(self, requirements: dict, start_position: tuple, current_position: dict, coords: dict) -> dict:
+        """Mine using a staircase pattern while exploring ore veins with Breadth First Search (BFS)."""
         self.collected_materials.clear()
         
         start_x, target_y, start_z = start_position
@@ -157,6 +164,7 @@ class VeinSearchStrategy(MiningStrategy):
         return self.collected_materials
     
     async def process_block(self, x: int, y: int, z: int, requirements: dict):
+        """Process a block and initiate vein mining if it matches requirements."""
         if y < self.bedrock_level:
             return
         
@@ -183,6 +191,7 @@ class VeinSearchStrategy(MiningStrategy):
             self.mc.setBlock(x, y, z, 0)
     
     async def mine_vein_bfs(self, requirements: dict):
+        """Mine connected blocks of the same ore type using Breadth-First search (BFS)."""
         if not isinstance(self.vein_queue, deque):
             self.vein_queue = deque(self.vein_queue)
         

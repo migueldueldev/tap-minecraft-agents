@@ -43,7 +43,12 @@ PROCESSABLE_MATERIALS = {
 }
 
 class MinerBot(BaseAgent):
+    """
+    Agent responsible for mining materials based on Bill of Materials (BOM) requirements.
+    Supports multiple mining strategies and coordinates with building agent for resource delivery.
+    """
     def __init__(self, mc, workspace):
+        """Initialize the miner with strategy and inventory state."""
         super().__init__(mc, workspace)
         self.mc = mc
         self.workspace = workspace
@@ -93,6 +98,7 @@ class MinerBot(BaseAgent):
         return strategies
 
     async def perceive(self, **kwargs):
+        """Gather position data and process incoming material requirement messages."""
         pos = self.mc.player.getTilePos()
         user_x = kwargs.get("x")
         user_z = kwargs.get("z")
@@ -157,6 +163,7 @@ class MinerBot(BaseAgent):
         return self.coords
 
     async def decide(self, **kwargs):
+        """Select mining strategy and prepare for mining execution."""
         target_class = self.strategy_map.get(self.mining_strategy_name.lower())
         if not target_class and "vertical" in self.strategy_map:
              target_class = self.strategy_map["vertical"]
@@ -181,6 +188,7 @@ class MinerBot(BaseAgent):
             self.set_state(AgentState.IDLE, "No active mining task")
 
     async def act(self, **kwargs):
+        """Execute the mining process using the selected strategy."""
         if not self.current_bom or not self.mining_strategy or not self.ready_to_mine:
             await asyncio.sleep(0.5)
             return
@@ -299,6 +307,7 @@ class MinerBot(BaseAgent):
                 self.current_position.clear()
     
     def handle_command(self, command):
+        """Process miner-specific commands for strategy and mining control."""
         payload = command.get("payload", {})
         action = payload.get("action")
         parameters = payload.get("parameters", {})
@@ -354,6 +363,7 @@ class MinerBot(BaseAgent):
         return False
     
     def handle_material_requirements(self, message):
+        """Process incoming material requirements from Builder agent."""
         payload = message.get("payload", {})
         requirements = payload.get("requirements", {})
         self.reference_position = payload.get("reference_position")
@@ -385,19 +395,23 @@ class MinerBot(BaseAgent):
             self.mc.postToChat(msg)
         
     def get_minable_requirements(self) -> dict:
+        """Calculate remaining minable ore requirements from material list."""
         remaining = {m: max(0, q - self.inventory.get(m, 0)) for m, q in self.material_requirements.items() if m not in AUTO_PROVIDED_MATERIALS}
         ore_reqs = reduce(self.merge_ores, map(lambda kv: self.to_ore_req(*kv), remaining.items()), {})
         return {m: q for m, q in ore_reqs.items() if m in MINABLE_MATERIALS and q > 0}
 
     def to_ore_req(self, material, quantity):
+        """Convert a processed material requirement to its raw ore equivalent."""
         if material in PROCESSABLE_MATERIALS:
             return (PROCESSABLE_MATERIALS[material]["raw"], quantity * PROCESSABLE_MATERIALS[material]["amount"])
         return (material, quantity)
     
     def merge_ores(self, acc, kv):
+        """Merge ore requirements by accumulating quantities for the same material."""
         return {**acc, kv[0]: acc.get(kv[0], 0) + kv[1]}
 
     def convert_ores_to_blocks(self):
+        """Convert collected raw ores to processed blocks in inventory."""
         for block_name, info in PROCESSABLE_MATERIALS.items():
             if block_name not in self.material_requirements:
                 continue
@@ -411,12 +425,14 @@ class MinerBot(BaseAgent):
                 self.inventory[block_name] = self.inventory.get(block_name, 0) + to_convert
 
     def validate_inventory(self) -> bool:
+        """Check if inventory has all required minable materials."""
         for material, needed in self.material_requirements.items():
             if material in MINABLE_MATERIALS and self.inventory.get(material, 0) < needed:
                 return False
         return True
 
     def requirements_fulfilled(self) -> bool:
+        """Check if all minable material requirements have been fulfilled."""
         minable_reqs = self.get_minable_requirements()
         if not minable_reqs:
             return True
@@ -427,15 +443,18 @@ class MinerBot(BaseAgent):
         return True
 
     def send_inventory_update(self, complete: bool = False):
+        """Send inventory update message to Builder agent."""
         message = self.generate_message()
         message["payload"]["complete"] = complete
         message["payload"]["strategy"] = self.mining_strategy.get_strategy_name() if self.mining_strategy else None
         self.workspace.post_message(message)
 
     def get_block_names(self):
+        """Build a mapping of block IDs to their names."""
         return {b.id: name for name, b in block.__dict__.items() if hasattr(b, "id")}
      
     def generate_message(self):
+        """Generate an inventory update message with material progress data."""
         progress_payload = []
 
         for name, qty in self.material_requirements.items():
@@ -466,6 +485,7 @@ class MinerBot(BaseAgent):
         return message
     
     def set_state(self, new_state: AgentState, reason: str = None):
+        """Update agent state and release mining locks on stop or error."""
         old_state = self.state
         super().set_state(new_state, reason)
         

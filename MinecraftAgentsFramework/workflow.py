@@ -5,6 +5,7 @@ import datetime
 import asyncio
 
 class WorkflowConfig:
+    """Configuration data for workflow execution parameters."""
     def __init__(self, params: dict):
         """Initialize configuration from parsed command parameters."""
         self.x = params.get("x")
@@ -20,6 +21,7 @@ class WorkflowState:
     """Workflow state tracking completion flags."""
     def __init__(self, exploration_complete=False, materials_requested=False, 
                  mining_complete=False, build_complete=False, current_stage=0):
+        """Initialize workflow state with default completion flags."""
         self.exploration_complete = exploration_complete
         self.materials_requested = materials_requested
         self.mining_complete = mining_complete
@@ -37,18 +39,22 @@ class WorkflowState:
         )
 
 def handle_map_message(state: WorkflowState, message: dict) -> WorkflowState:
+    """Handle exploration map completion message."""
     return state.update(exploration_complete=True)
 
 def handle_requirements_message(state: WorkflowState, message: dict) -> WorkflowState:
+    """Handle materials requirements publication message."""
     return state.update(materials_requested=True)
 
 def handle_inventory_message(state: WorkflowState, message: dict) -> WorkflowState:
+    """Handle mining inventory update message."""
     payload = message.get("payload", {})
     if payload.get("complete", False):
         return state.update(mining_complete=True)
     return state
 
 def handle_build_message(state: WorkflowState, message: dict) -> WorkflowState:
+    """Handle build progress update message."""
     if message.get("status") == "COMPLETED":
         return state.update(build_complete=True)
     return state
@@ -114,6 +120,7 @@ class Workflow:
         return cls._instance
     
     def __init__(self, mc, workspace, agents: list):
+        """Initialize the workflow with Minecraft connection, workspace and agent references."""
         # Singleton pattern: Only initialize once
         if self._initialized:
             return

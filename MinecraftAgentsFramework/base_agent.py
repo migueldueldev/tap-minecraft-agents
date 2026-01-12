@@ -7,6 +7,7 @@ import threading
 from collections import deque
 
 class AgentState(Enum):
+    """Enumeration of possible agent states during execution lifecycle."""
     IDLE = "IDLE"
     RUNNING = "RUNNING"
     PAUSED = "PAUSED"
@@ -15,7 +16,12 @@ class AgentState(Enum):
     ERROR = "ERROR"
 
 class BaseAgent:
+    """
+    Abstract base class for all Minecraft agents using the PDA (Perceive-Decide-Act) cycle.
+    Provides common functionality for state management, command processing and inter-agent communication.
+    """
     def __init__(self, mc, workspace):
+        """Initialize the agent with Minecraft connection and shared workspace."""
         self.state: AgentState = AgentState.IDLE
         self.pda_task: asyncio.Task = None
         self.command_task: asyncio.Task = None
@@ -31,15 +37,18 @@ class BaseAgent:
         self.command_event = asyncio.Event()
 
     def receive_command(self, command):
+        """Receive a command from the shared workspace and queue it for processing."""
         with self.lock:
             self.local_command_queue.append(command)
         self.command_event.set()
 
     def receive_message(self, message):
+        """Receive a message from another agent and queue it for processing."""
         with self.lock:
             self.local_message_queue.append(message)
 
     def get_messages(self) -> list:
+        """Retrieve and clear all pending messages from the local queue."""
         messages = []
         with self.lock:
             while self.local_message_queue:
@@ -52,20 +61,25 @@ class BaseAgent:
 
     @abstractmethod
     async def perceive(self):
+        """Gather information from the environment. Must be implemented by subclasses."""
         pass
 
     @abstractmethod
     async def decide(self):
+        """Process perceived information and make decisions. Must be implemented by subclasses."""
         pass
     
     @abstractmethod
     async def act(self):
+        """Execute actions based on decisions. Must be implemented by subclasses."""
         pass
 
     def get_state(self) -> AgentState:
+        """Return the current agent state."""
         return self.state
 
     def set_state(self, new_state: AgentState, reason: str = None):
+        """Update agent state and log the transition in the workspace."""
         old_state = self.state
         self.state = new_state
         timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"
@@ -79,6 +93,7 @@ class BaseAgent:
         self.workspace.log_event("STATE_CHANGE", self.__class__.__name__, log_data)
     
     async def start(self, **kwargs):
+        """Start the PDA cycle and command processing loop of the agent."""
         if self.state == AgentState.STOPPED:
             print(f"Agent {self.__class__.__name__} (ID={id(self)}) is stopped and cannot be restarted.")
             return
@@ -98,6 +113,7 @@ class BaseAgent:
         print(f"Agent {self.__class__.__name__} (ID={id(self)}) started.")
 
     def stop(self):
+        """Stop the agent and terminate its execution cycle."""
         self.should_stop = True
         self.interrupt_event.set()
         self.set_state(AgentState.STOPPED, reason="Stop command received")
@@ -105,6 +121,7 @@ class BaseAgent:
         print(f"Agent {self.__class__.__name__} (ID={id(self)}) stopped.")
 
     def pause(self):
+        """Pause the execution cycle of the agent."""
         if self.state != AgentState.PAUSED:
             self.set_state(AgentState.PAUSED, reason="Pause command received")
             self.interrupt_event.set()
@@ -114,6 +131,7 @@ class BaseAgent:
             self.mc.postToChat(f"Agent {self.__class__.__name__} is already paused.")
 
     def resume(self):
+        """Resume the execution cycle of the agent from paused state."""
         if self.state == AgentState.PAUSED:
             self.set_state(AgentState.RUNNING, reason="Resume command received")
             self.interrupt_event.set()
@@ -123,10 +141,12 @@ class BaseAgent:
             self.mc.postToChat(f"Agent {self.__class__.__name__} is not paused.")
 
     def status(self):
+        """Display the current agent status in the Minecraft chat."""
         self.mc.postToChat(f"Agent {self.__class__.__name__} status: {self.state.value}")
         print(f"Agent {self.__class__.__name__} (ID={id(self)}) status is {self.state.value}.")
 
     def help(self):
+        """Display available commands for this agent in the Minecraft chat."""
         help_message = [
             f"Agent {self.__class__.__name__} help commands:",
             "   start: Start the agent",
@@ -140,6 +160,7 @@ class BaseAgent:
         print(f"Agent {self.__class__.__name__} (ID={id(self)}) help text displayed.")
     
     async def process_commands_loop(self):
+        """Continuously process commands from the local command queue."""
         try:
             while True:
                 await self.command_event.wait()
@@ -168,6 +189,7 @@ class BaseAgent:
             print(f"Agent {self.__class__.__name__} (ID={id(self)}) command processing loop terminated.")
 
     async def run_agent_cycle(self):
+        """Execute the main Perceive-Decide-Act (PDA) loop until the agent is stopped."""
         try:
             while not self.should_stop:
                 if self.state == AgentState.PAUSED:
@@ -205,6 +227,7 @@ class BaseAgent:
             print(f"Agent {self.__class__.__name__} (ID={id(self)}) execution loop terminated.")
     
     def handle_command(self, command):
+        """Process a command and execute the corresponding action."""
         payload = command.get("payload", {})
         action = payload.get("action")
         parameters = payload.get("parameters", {})
@@ -237,6 +260,3 @@ class BaseAgent:
             return True
             
         return False
-
-    def handle_message(self, message):
-        pass
