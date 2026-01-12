@@ -363,9 +363,12 @@ class TestConcurrentAgentOperations:
         agents, workspace, _ = multi_agent_setup
         
         message = {
+            "type": "test.v1",
             "source": "TestAgent0",
             "target": "TestAgent2",
-            "content": "test_message"
+            "timestamp": "2026-01-01T00:00:00Z",
+            "payload": {"content": "test_message"},
+            "status": "SUCCESS"
         }
         workspace.post_message(message)
         

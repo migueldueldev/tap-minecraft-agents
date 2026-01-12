@@ -256,19 +256,18 @@ class TestCommandRouting:
         workspace.post_command("NonExistentAgent", command)
 
 
-class TestStateChangeNotifications:
-    """Tests for state change notification between agents."""
+class TestStateChangeLogging:
+    """Tests for state change logging through workspace."""
     
     @pytest.fixture
-    def state_notification_setup(self, tmp_path):
+    def state_logging_setup(self, tmp_path):
         mc = MockMinecraft()
         workspace = SharedWorkspace()
         workspace.log_file = str(tmp_path / "test.log")
         
-        class NotifyingAgent(BaseAgent):
+        class TestAgent(BaseAgent):
             def __init__(self, mc, workspace):
                 super().__init__(mc, workspace)
-                self.notifications_sent = []
             
             async def perceive(self, **kwargs):
                 pass
@@ -278,86 +277,64 @@ class TestStateChangeNotifications:
             
             async def act(self, **kwargs):
                 pass
-            
-            def set_state(self, new_state, reason=None):
-                old_state = self.state
-                super().set_state(new_state, reason)
-                
-                # Send notification on critical states
-                if new_state in [AgentState.STOPPED, AgentState.ERROR]:
-                    notification = {
-                        "type": "state_change.v1",
-                        "source": self.__class__.__name__,
-                        "target": "BuilderBot",
-                        "payload": {
-                            "previous_state": old_state.value,
-                            "new_state": new_state.value,
-                            "reason": reason
-                        }
-                    }
-                    self.workspace.post_message(notification)
-                    self.notifications_sent.append(notification)
         
-        class ListenerAgent(BaseAgent):
-            def __init__(self, mc, workspace):
-                super().__init__(mc, workspace)
-                self.state_notifications = []
-            
-            async def perceive(self, **kwargs):
-                for msg in self.get_messages():
-                    if msg.get("type") == "state_change.v1":
-                        self.state_notifications.append(msg)
-            
-            async def decide(self, **kwargs):
-                pass
-            
-            async def act(self, **kwargs):
-                pass
+        agent = TestAgent(mc, workspace)
+        agent.__class__ = type('MinerBot', (TestAgent,), {})
         
-        notifier = NotifyingAgent(mc, workspace)
-        notifier.__class__ = type('MinerBot', (NotifyingAgent,), {})
-        
-        listener = ListenerAgent(mc, workspace)
-        listener.__class__ = type('BuilderBot', (ListenerAgent,), {})
-        
-        return notifier, listener, workspace
+        return agent, workspace
     
     @pytest.mark.asyncio
-    async def test_error_state_triggers_notification(self, state_notification_setup):
-        """Test that ERROR state triggers notification to dependent agents."""
-        notifier, listener, workspace = state_notification_setup
+    async def test_error_state_logs_to_workspace(self, state_logging_setup):
+        """Test that ERROR state is logged through workspace."""
+        agent, workspace = state_logging_setup
         
-        notifier.set_state(AgentState.ERROR, reason="Mining failed")
+        agent.set_state(AgentState.ERROR, reason="Mining failed")
         
-        # Listener should have received notification
-        assert len(listener.local_message_queue) == 1
+        # Verify that state was changed
+        assert agent.state == AgentState.ERROR
         
-        await listener.perceive()
+        # Verify that logged to workspace (read log file)
+        import json
+        with open(workspace.log_file, 'r') as f:
+            events = [json.loads(line) for line in f if line.strip()]
         
-        assert len(listener.state_notifications) == 1
-        assert listener.state_notifications[0]["payload"]["new_state"] == "ERROR"
+        state_changes = [e for e in events if e["event"] == "STATE_CHANGE"]
+        assert len(state_changes) > 0
+        last_change = state_changes[-1]
+        assert last_change["data"]["new_state"] == "ERROR"
+        assert last_change["data"]["reason"] == "Mining failed"
     
     @pytest.mark.asyncio
-    async def test_stop_state_triggers_notification(self, state_notification_setup):
-        """Test that STOPPED state triggers notification."""
-        notifier, listener, _ = state_notification_setup
+    async def test_stop_state_logs_to_workspace(self, state_logging_setup):
+        """Test that STOPPED state is logged through workspace."""
+        agent, workspace = state_logging_setup
         
-        notifier.set_state(AgentState.STOPPED, reason="User requested stop")
+        agent.set_state(AgentState.STOPPED, reason="User requested stop")
         
-        await listener.perceive()
+        assert agent.state == AgentState.STOPPED
         
-        assert len(listener.state_notifications) == 1
-        assert listener.state_notifications[0]["payload"]["new_state"] == "STOPPED"
+        import json
+        with open(workspace.log_file, 'r') as f:
+            events = [json.loads(line) for line in f if line.strip()]
+        
+        state_changes = [e for e in events if e["event"] == "STATE_CHANGE"]
+        last_change = state_changes[-1]
+        assert last_change["data"]["new_state"] == "STOPPED"
     
     @pytest.mark.asyncio
-    async def test_running_state_no_notification(self, state_notification_setup):
-        """Test that RUNNING state doesn't trigger unnecessary notifications."""
-        notifier, listener, _ = state_notification_setup
+    async def test_running_state_logs_to_workspace(self, state_logging_setup):
+        """Test that all state changes are logged consistently."""
+        agent, workspace = state_logging_setup
         
-        notifier.set_state(AgentState.RUNNING, reason="Started")
+        agent.set_state(AgentState.RUNNING, reason="Started")
         
-        # No notification should be sent
-        assert len(listener.local_message_queue) == 0
+        import json
+        with open(workspace.log_file, 'r') as f:
+            events = [json.loads(line) for line in f if line.strip()]
+        
+        state_changes = [e for e in events if e["event"] == "STATE_CHANGE"]
+        last_change = state_changes[-1]
+        assert last_change["data"]["new_state"] == "RUNNING"
 
 
 class TestMessageOrdering:
@@ -387,7 +364,9 @@ class TestMessageOrdering:
                 "type": "test.v1",
                 "source": "Sender",
                 "target": "Receiver",
-                "payload": {"sequence": i}
+                "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+                "payload": {"sequence": i},
+                "status": "SUCCESS"
             }
             workspace.post_message(message)
         

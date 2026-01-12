@@ -24,10 +24,12 @@ def mock_workspace():
 
 @pytest.fixture
 def miner_bot(mock_mc, mock_workspace):
-    # Mock strategies
-    with patch('agents.MinerBot.VerticalSearchStrategy'), \
-         patch('agents.MinerBot.GridSearchStrategy'), \
-         patch('agents.MinerBot.VeinSearchStrategy'):
+    # Mock the load strategies method to return mock strategies
+    with patch.object(MinerBot, 'load_strategies', return_value={
+        'vertical': MagicMock(),
+        'grid': MagicMock(),
+        'vein': MagicMock()
+    }):
         bot = MinerBot(mock_mc, mock_workspace)
         return bot
 
@@ -100,39 +102,45 @@ def test_handle_command_fulfill(miner_bot):
     miner_bot.handle_command(command)
     assert miner_bot.ready_to_mine is True
 
-def test_set_state_notification(miner_bot, mock_workspace):
-    """Test that MinerBot posts a state change notification on ERROR state"""
+def test_set_state_releases_locks_on_error(miner_bot, mock_workspace):
+    """Test that MinerBot releases locks when transitioning to ERROR state"""
     # Set an initial state first
     miner_bot.state = AgentState.RUNNING
     
+    # Create a mock mining strategy
+    mock_strategy = MagicMock()
+    miner_bot.mining_strategy = mock_strategy
+    
     assert hasattr(miner_bot, 'set_state')
     
-    # Change to ERROR state to trigger a notification
+    # Change to ERROR state to trigger lock release
     miner_bot.set_state(AgentState.ERROR, reason="Test Error")
     
     # Verify the state was actually changed
     assert miner_bot.state == AgentState.ERROR
     
-    # Check if a state change notification was posted to workspace
-    if mock_workspace.post_message.called:
-        args, kwargs = mock_workspace.post_message.call_args
-        message = args[0]
-        assert message["type"] == "state_change.v1"
-        assert message["payload"]["new_state"] == AgentState.ERROR.value
-        assert message["payload"]["reason"] == "Test Error"
+    # Verify that locks were released
+    mock_strategy.release_all_locks.assert_called_once()
 
 
-def test_set_state_no_notification_on_running(miner_bot, mock_workspace):
-    """Test that MinerBot does NOT post notification when transitioning to RUNNING"""
+def test_set_state_no_locks_released_on_running(miner_bot, mock_workspace):
+    """Test that MinerBot does NOT release locks when transitioning to RUNNING"""
     miner_bot.state = AgentState.IDLE
+    
+    # Create a mock mining strategy
+    mock_strategy = MagicMock()
+    miner_bot.mining_strategy = mock_strategy
+    
     miner_bot.set_state(AgentState.RUNNING, reason="Starting")
     
-    mock_workspace.post_message.assert_not_called()
+    # Verify that locks were not released
+    mock_strategy.release_all_locks.assert_not_called()
 
 @pytest.mark.asyncio
 async def test_perceive_updates_coords(miner_bot, mock_mc):
     mock_mc.player.getTilePos.return_value = MockPos(1, 2, 3)
+    mock_mc.getHeight.return_value = 64  # Surface height above default mining depth
     coords = await miner_bot.perceive()
     assert coords["x"] == 1
-    assert coords["y"] == 2
+    assert coords["y"] == 5  # Default mining depth
     assert coords["z"] == 3

@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from unittest.mock import MagicMock, AsyncMock, patch, ANY
-from agents.MiningStrategy import VeinSearchStrategy
+from strategies.VeinSearchStrategy import VeinSearchStrategy
 
 @pytest.fixture
 def mock_dependencies():

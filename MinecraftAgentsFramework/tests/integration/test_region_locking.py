@@ -15,12 +15,10 @@ import threading
 from unittest.mock import MagicMock, patch, AsyncMock
 from concurrent.futures import ThreadPoolExecutor
 
-from agents.MiningStrategy import (
-    MiningStrategy,
-    VerticalSearchStrategy,
-    GridSearchStrategy,
-    VeinSearchStrategy
-)
+from strategies.MiningStrategy import MiningStrategy
+from strategies.VerticalSearchStrategy import VerticalSearchStrategy
+from strategies.GridSearchStrategy import GridSearchStrategy
+from strategies.VeinSearchStrategy import VeinSearchStrategy
 from BaseAgent import AgentState
 from SharedWorkspace import SharedWorkspace
 

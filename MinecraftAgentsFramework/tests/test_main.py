@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
-from main import parse_message, parse_parameters, find_agent
+from main import parse_message, find_agent
+from utils import parse_parameters
 
 
 class TestParseParameters:

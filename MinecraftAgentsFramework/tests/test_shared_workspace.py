@@ -90,7 +90,14 @@ class TestMessageRouting:
         workspace.register_observer(agent_a)
         workspace.register_observer(agent_b)
         
-        message = {"source": "AgentA", "target": "AgentB", "content": "hello"}
+        message = {
+            "type": "test.v1",
+            "source": "AgentA",
+            "target": "AgentB",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "payload": {"content": "hello"},
+            "status": "SUCCESS"
+        }
         workspace.post_message(message)
         
         agent_b.receive_message.assert_called_once_with(message)
@@ -193,7 +200,14 @@ def test_post_message(workspace):
     workspace.register_observer(agent_a)
     workspace.register_observer(agent_b)
     
-    message = {"source": "AgentA", "target": "AgentB", "content": "hello"}
+    message = {
+        "type": "test.v1",
+        "source": "AgentA",
+        "target": "AgentB",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "payload": {"content": "hello"},
+        "status": "SUCCESS"
+    }
     workspace.post_message(message)
     
     agent_b.receive_message.assert_called_once_with(message)

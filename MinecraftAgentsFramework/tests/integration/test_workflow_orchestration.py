@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 
 from BaseAgent import BaseAgent, AgentState
 from SharedWorkspace import SharedWorkspace
+from Workflow import Workflow
 
 
 class MockMinecraft:
@@ -414,6 +415,7 @@ class TestConcurrentWorkflows:
                 "type": "map.v1",
                 "source": explorer.__class__.__name__,
                 "target": builder.__class__.__name__,
+                "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
                 "payload": explorer.terrain_data,
                 "status": "SUCCESS"
             }

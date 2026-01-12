@@ -2,12 +2,11 @@
 from mcpi.minecraft import Minecraft
 from SharedWorkspace import SharedWorkspace
 from Workflow import Workflow
-from utils import create_command
+from utils import parse_message, find_agent
 import pkgutil
 import importlib
 import os
 import asyncio
-import datetime
 from BaseAgent import BaseAgent
 
 def connect_mc() -> Minecraft:
@@ -33,92 +32,6 @@ def load_agents(mc, workspace) -> list:
     print(f"Agents loaded: {instances}")
     return instances
 
-async def parse_message(message, mc, workspace, instances, workflow):
-    components = message.split(" ")
-    if components and components[0].startswith("./") and len(components) >= 2:
-        agent = components[0][2:]
-        action = components[1]
-        parameters = components[2:]
-    
-        agent_map = {
-            "explorer": "ExplorerBot",
-            "miner": "MinerBot",
-            "builder": "BuilderBot",
-        }
-
-        # Handle workflow command separately
-        if agent == "workflow":
-            await handle_workflow_command(action, parameters, workflow, mc, workspace, instances)
-            return
-        
-        if agent not in agent_map:
-            mc.postToChat(f'Agent "{agent}" not recognized')
-            return
-        
-        agent_class_name = agent_map[agent]
-        agent_instance = find_agent(instances, agent_class_name)
-        
-        if not agent_instance:
-            mc.postToChat(f'Agent instance "{agent_class_name}" not found')
-            return
-        
-        valid_action = {
-            "explorer" : ["start", "set", "stop", "status", "pause", "resume", "help", "toggle", "confirm", "queue"],
-            "miner" : ["start", "set", "fulfill", "pause", "resume", "status", "stop", "help", "test"],
-            "builder" : ["plan", "bom", "build", "pause", "resume", "stop", "status", "help"],
-        }
-
-        if action not in valid_action.get(agent, []):
-            mc.postToChat(f'Action "{action}" not valid for agent "{agent}"')
-            return
-        
-        context = {
-            "task_id": str(id(asyncio.current_task()))
-        }
-        command = create_command("User", agent_class_name, action, parse_parameters(parameters), context)
-
-        workspace.post_command(agent_class_name, command)
-        print(f'Command "{action} {parameters}" sent to agent "{agent}"')
-
-def parse_parameters(raw_parameters):
-    parameters = {}
-    i = 0
-    while i < len(raw_parameters):
-        param = raw_parameters[i]
-        
-        if '=' in param:
-            key, value = param.split('=', 1)
-            try:
-                parameters[key] = int(value)
-            except ValueError:
-                try:
-                    parameters[key] = float(value)
-                except ValueError:
-                    parameters[key] = value
-            i += 1
-        elif i + 1 < len(raw_parameters) and '=' not in raw_parameters[i + 1]:
-            key = param
-            value = raw_parameters[i + 1]
-            try:
-                parameters[key] = int(value)
-            except ValueError:
-                try:
-                    parameters[key] = float(value)
-                except ValueError:
-                    parameters[key] = value
-            i += 2  
-        else:
-            parameters[param] = None
-            i += 1
-    
-    return parameters
-
-def find_agent(instances, agent_class_name):
-    for instance in instances:
-        if instance.__class__.__name__ == agent_class_name:
-            return instance
-    return None
-
 async def read_chat_events(mc, workspace, instances, workflow):
     while True:
         chat_events = mc.events.pollChatPosts()
@@ -126,22 +39,6 @@ async def read_chat_events(mc, workspace, instances, workflow):
             print(f"Chat event: {event}")
             await parse_message(event.message, mc, workspace, instances, workflow)
         await asyncio.sleep(0.1)
-
-async def handle_workflow_command(action: str, parameters: list, workflow: Workflow, mc, workspace, instances):
-    """Handle workflow commands separately from agent commands."""
-    valid_actions = ["run", "stop", "help"]
-    if action not in valid_actions:
-        mc.postToChat(f'Action "{action}" not valid for workflow execution')
-        return
-    
-    parsed_params = parse_parameters(parameters)
-    
-    if action == "run":
-        asyncio.create_task(workflow.run(parsed_params))
-    elif action == "stop":
-        workflow.stop()
-    elif action == "help":
-        workflow.help()
 
 async def main():
     mc = connect_mc()

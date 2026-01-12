@@ -99,11 +99,25 @@ class Workflow:
     """
     Coordinates multi-agent workflow for terrain exploration,
     material gathering from mining activities and structure building.
+    Implemented as a singleton to ensure only one workflow instance exists.
     """
     
     OBSERVABLE_MESSAGES = set({"map.v1", "materials.requirements.v1", "inventory.v1", "build.v1"})
     
+    _instance: Optional["Workflow"] = None
+    
+    def __new__(cls, mc=None, workspace=None, agents: list = None):
+        """Singleton pattern: Return existing instance or create new one."""
+        if cls._instance is None:
+            cls._instance = super(Workflow, cls).__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+    
     def __init__(self, mc, workspace, agents: list):
+        # Singleton pattern: Only initialize once
+        if self._initialized:
+            return
+            
         self.mc = mc
         self.workspace = workspace
         self.agents = {a.__class__.__name__: a for a in agents}
@@ -115,6 +129,13 @@ class Workflow:
         
         # Register as message observer
         workspace.register_workflow_observer(self)
+        
+        self._initialized = True
+    
+    @classmethod
+    def get_instance(cls) -> Optional["Workflow"]:
+        """Get the current workflow instance, if it exists."""
+        return cls._instance
 
     def receive_message(self, message: dict):
         """Receive message from workspace."""
@@ -235,24 +256,6 @@ class Workflow:
         start_params = {k: v for k, v in params.items() if k != "strategy"}
         self._send_command("MinerBot", "start", start_params)
         self.mc.postToChat(f"[Workflow] Miner collecting (strategy={self.config.miner_strategy} x={self.config.miner_x} y={self.config.miner_y} z={self.config.miner_z})")
-
-        # Wait up to 20 seconds for completion, otherwise fulfill
-        start_time = asyncio.get_event_loop().time()
-        timeout = 20.0
-        
-        while not self.state.mining_complete:
-            # Check timeout
-            if asyncio.get_event_loop().time() - start_time > timeout:
-                self.mc.postToChat(f"[Workflow] Mining time limit ({timeout}s) reached. Auto-fulfilling requirements.")
-                self._send_command("MinerBot", "fulfill", {})
-                break
-            
-            if self.should_stop:
-                break
-
-            # Process messages to detect completion early!
-            await self._process_messages()
-            await asyncio.sleep(0.5)
 
     async def _stage_building(self):
         """Stage 4: BuilderBot constructs the structure."""

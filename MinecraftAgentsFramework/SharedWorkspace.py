@@ -1,5 +1,6 @@
 import json
 import datetime
+import os
 from utils import validate_message
 
 class SharedWorkspace:
@@ -9,7 +10,15 @@ class SharedWorkspace:
     def __init__(self):
         self.observers = []
         self.workflow_observer = None
-        self.log_file = "agent_execution.log"
+        
+        # Create logs directory if it does not exist
+        logs_dir = os.path.join(os.path.dirname(__file__), "logs")
+        os.makedirs(logs_dir, exist_ok=True)
+        
+        # Create log filename with UTC timestamp
+        timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
+        log_filename = f"mc_agent_execution_{timestamp}.log"
+        self.log_file = os.path.join(logs_dir, log_filename)
     
     def register_observer(self, observer):
         if observer not in self.observers:

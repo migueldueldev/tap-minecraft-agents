@@ -27,3 +27,11 @@ def event_loop():
     loop = asyncio.new_event_loop()
     yield loop
     loop.close()
+
+@pytest.fixture(autouse=True)
+def reset_workflow_singleton():
+    """Reset the Workflow singleton before and after each test for isolation."""
+    from Workflow import Workflow
+    Workflow._instance = None
+    yield
+    Workflow._instance = None

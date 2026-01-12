@@ -472,11 +472,3 @@ class MinerBot(BaseAgent):
         if new_state in [AgentState.STOPPED, AgentState.ERROR]:
             if self.mining_strategy:
                 self.mining_strategy.release_all_locks()
-            
-            payload = {
-                "previous_state": old_state.value,
-                "new_state": new_state.value,
-                "reason": reason
-            }
-            notification = create_message("state_change.v1", self.__class__.__name__, "BuilderBot", payload)
-            self.workspace.post_message(notification)
