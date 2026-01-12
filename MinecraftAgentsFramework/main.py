@@ -79,8 +79,9 @@ async def main():
         for task in pending:
             task.cancel()
         await asyncio.gather(*pending, return_exceptions=True)
-
+    finally:
         workspace.save_final_state(instances)
+        logger.info("Final state saved successfully")
 
 if __name__ == "__main__":
     try: 
