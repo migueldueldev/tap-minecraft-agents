@@ -1,3 +1,4 @@
+from logging_config import get_logger
 from abc import ABC, abstractmethod
 from base_agent import AgentState
 import datetime
@@ -17,6 +18,7 @@ class MiningStrategy(ABC):
         self.collected_materials = {}
         self.locked_regions = set()
         self.block_names = self.get_block_names()
+        self.logger = get_logger(f"Strategy.{self.__class__.__name__}")
     
     @abstractmethod
     async def mine(self, requirements: dict, start_position: tuple, current_position: dict, coords: dict) -> dict:

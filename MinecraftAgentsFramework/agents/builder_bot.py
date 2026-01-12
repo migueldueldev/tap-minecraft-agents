@@ -385,3 +385,4 @@ class BuilderBot(BaseAgent):
             "  ./builder status                     - Show status",
         ]:
             self.mc.postToChat(line)
+        self.logger.debug("Help text displayed")

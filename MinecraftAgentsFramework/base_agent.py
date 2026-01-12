@@ -1,10 +1,11 @@
+from logging_config import get_logger
 from abc import abstractmethod
-import datetime
+from collections import deque
 from enum import Enum
+import datetime
 import asyncio
 import json
 import threading
-from collections import deque
 
 class AgentState(Enum):
     """Enumeration of possible agent states during execution lifecycle."""
@@ -35,6 +36,7 @@ class BaseAgent:
         self.args = {}
         self.interrupt_event = asyncio.Event()
         self.command_event = asyncio.Event()
+        self.logger = get_logger(self.__class__.__name__)
 
     def receive_command(self, command):
         """Receive a command from the shared workspace and queue it for processing."""
@@ -95,11 +97,11 @@ class BaseAgent:
     async def start(self, **kwargs):
         """Start the PDA cycle and command processing loop of the agent."""
         if self.state == AgentState.STOPPED:
-            print(f"Agent {self.__class__.__name__} (ID={id(self)}) is stopped and cannot be restarted.")
+            self.logger.warning("Agent (ID=%s) is stopped and cannot be restarted", id(self))
             return
 
         if self.pda_task and not self.pda_task.done():
-            print(f"Agent {self.__class__.__name__} (ID={id(self)}) is already running.")
+            self.logger.warning("Agent (ID=%s) is already running", id(self))
             return
 
         self.args = kwargs
@@ -110,7 +112,7 @@ class BaseAgent:
         self.command_task = asyncio.create_task(self.process_commands_loop())
         self.pda_task = asyncio.create_task(self.run_agent_cycle())
         self.mc.postToChat(f"Agent {self.__class__.__name__} started.")
-        print(f"Agent {self.__class__.__name__} (ID={id(self)}) started.")
+        self.logger.info("Agent (ID=%s) started", id(self))
 
     def stop(self):
         """Stop the agent and terminate its execution cycle."""
@@ -118,7 +120,7 @@ class BaseAgent:
         self.interrupt_event.set()
         self.set_state(AgentState.STOPPED, reason="Stop command received")
         self.mc.postToChat(f"Agent {self.__class__.__name__} stopped.")
-        print(f"Agent {self.__class__.__name__} (ID={id(self)}) stopped.")
+        self.logger.info("Agent (ID=%s) stopped", id(self))
 
     def pause(self):
         """Pause the execution cycle of the agent."""
@@ -126,7 +128,7 @@ class BaseAgent:
             self.set_state(AgentState.PAUSED, reason="Pause command received")
             self.interrupt_event.set()
             self.mc.postToChat(f"Agent {self.__class__.__name__} paused.")
-            print(f"Agent {self.__class__.__name__} (ID={id(self)}) paused.")
+            self.logger.info("Agent (ID=%s) paused", id(self))
         else:
             self.mc.postToChat(f"Agent {self.__class__.__name__} is already paused.")
 
@@ -136,14 +138,14 @@ class BaseAgent:
             self.set_state(AgentState.RUNNING, reason="Resume command received")
             self.interrupt_event.set()
             self.mc.postToChat(f"Agent {self.__class__.__name__} resumed.")
-            print(f"Agent {self.__class__.__name__} (ID={id(self)}) resumed.")
+            self.logger.info("Agent (ID=%s) resumed", id(self))
         else:
             self.mc.postToChat(f"Agent {self.__class__.__name__} is not paused.")
 
     def status(self):
         """Display the current agent status in the Minecraft chat."""
         self.mc.postToChat(f"Agent {self.__class__.__name__} status: {self.state.value}")
-        print(f"Agent {self.__class__.__name__} (ID={id(self)}) status is {self.state.value}.")
+        self.logger.debug("Agent (ID=%s) status: %s", id(self), self.state.value)
 
     def help(self):
         """Display available commands for this agent in the Minecraft chat."""
@@ -157,7 +159,7 @@ class BaseAgent:
         ]
         for line in help_message:
             self.mc.postToChat(line)
-        print(f"Agent {self.__class__.__name__} (ID={id(self)}) help text displayed.")
+        self.logger.debug("Agent (ID=%s) help text displayed", id(self))
     
     async def process_commands_loop(self):
         """Continuously process commands from the local command queue."""
@@ -176,17 +178,17 @@ class BaseAgent:
                     
                     if pending_command:
                         self.workspace.log_event("COMMAND_CONSUMED", self.__class__.__name__, pending_command)
-                        print(f"[{self.__class__.__name__}] Processing command: {pending_command}")
+                        self.logger.debug("Processing command: %s", pending_command)
                         self.handle_command(pending_command)
         except asyncio.CancelledError:
             pass
         except Exception as e:
-            print(f"Agent {self.__class__.__name__} (ID={id(self)}) encountered an error: {e}")
+            self.logger.error("Agent (ID=%s) encountered an error in command processing: %s", id(self), e)
             self.workspace.log_event("ERROR", self.__class__.__name__, {"error": str(e), "origin": "command_processing_loop", "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"})
             self.set_state(AgentState.ERROR)
 
         finally:
-            print(f"Agent {self.__class__.__name__} (ID={id(self)}) command processing loop terminated.")
+            self.logger.debug("Agent (ID=%s) command processing loop terminated", id(self))
 
     async def run_agent_cycle(self):
         """Execute the main Perceive-Decide-Act (PDA) loop until the agent is stopped."""
@@ -219,12 +221,12 @@ class BaseAgent:
 
                 await asyncio.sleep(0.1)
         except Exception as e:
-            print(f"Agent {self.__class__.__name__} (ID={id(self)}) encountered an error: {e}")
+            self.logger.error("Agent (ID=%s) encountered an error in agent cycle: %s", id(self), e)
             self.workspace.log_event("ERROR", self.__class__.__name__, {"error": str(e), "origin": "agent_run_loop", "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"})
             self.set_state(AgentState.ERROR)
 
         finally:
-            print(f"Agent {self.__class__.__name__} (ID={id(self)}) execution loop terminated.")
+            self.logger.debug("Agent (ID=%s) execution loop terminated", id(self))
     
     def handle_command(self, command):
         """Process a command and execute the corresponding action."""

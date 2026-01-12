@@ -1,6 +1,6 @@
 from .mining_strategy import MiningStrategy
-import asyncio
 from collections import deque
+import asyncio
 
 class VeinSearchStrategy(MiningStrategy):
     """

@@ -1,7 +1,10 @@
+from logging_config import get_logger
+from utils import validate_message
 import json
 import datetime
 import os
-from utils import validate_message
+
+logger = get_logger("SharedWorkspace")
 
 class SharedWorkspace:
     """
@@ -21,7 +24,7 @@ class SharedWorkspace:
         os.makedirs(logs_dir, exist_ok=True)
         
         # Create log filename with UTC timestamp
-        timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
         log_filename = f"mc_agent_execution_{timestamp}.log"
         self.log_file = os.path.join(logs_dir, log_filename)
     
@@ -51,7 +54,7 @@ class SharedWorkspace:
         try:
             validate_message(message)
         except Exception as e:
-            print(f"Error: Invalid message format: {e}")
+            logger.error("Invalid message format: %s", e)
             self.log_event("INVALID_MESSAGE_ERROR", message.get('source', 'SharedWorkspace'), {"error": str(e), "message": message})
             return
 

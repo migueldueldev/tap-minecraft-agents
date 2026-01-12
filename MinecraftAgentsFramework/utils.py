@@ -1,7 +1,10 @@
+from logging_config import get_logger
 from jsonschema import validate
 import datetime
-import uuid
 import asyncio
+import uuid
+
+logger = get_logger("Utils")
 
 MESSAGE_SCHEMA = {
     "type": "object",
@@ -45,8 +48,8 @@ def create_message(msg_type, source, target, payload, status="SUCCESS", context=
     try:
         validate_message(message)
     except Exception as e:
-        print(f"Warning: Created message does not match schema: {e}")
-        
+        logger.warning("Created message does not match schema: %s", e)
+
     return message
 
 def create_command(source, target, action, parameters, context=None):
@@ -176,4 +179,4 @@ async def parse_message(message, mc, workspace, instances, workflow):
         command = create_command("User", agent_class_name, action, parse_parameters(parameters), context)
 
         workspace.post_command(agent_class_name, command)
-        print(f'Command "{action} {parameters}" sent to agent "{agent}"')
+        logger.debug(f'Command "%s %s" sent to agent "%s"', action, parameters, agent)

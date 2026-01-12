@@ -1,8 +1,11 @@
-from typing import Optional, Callable
-from functools import reduce
 from utils import create_message, create_command
+from typing import Optional, Callable
+from logging_config import get_logger
+from functools import reduce
 import datetime
 import asyncio
+
+logger = get_logger("Workflow")
 
 class WorkflowConfig:
     """Configuration data for workflow execution parameters."""

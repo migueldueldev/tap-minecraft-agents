@@ -1,20 +1,27 @@
 # Import necessary modules
+from logging_config import setup_logging, get_logger
+from utils import find_agent, parse_message
 from mcpi.minecraft import Minecraft
+from base_agent import BaseAgent
 from shared_workspace import SharedWorkspace
 from workflow import Workflow
-from utils import parse_message, find_agent
 import pkgutil
 import importlib
 import os
 import asyncio
-from base_agent import BaseAgent
+
+# Initialize logging
+logger = setup_logging("DEBUG")
 
 def connect_mc() -> Minecraft:
     """Connect to the Minecraft server"""
     try:
-        return Minecraft.create()
+        logger.info("Connecting to Minecraft server...")
+        mc = Minecraft.create()
+        logger.info("Successfully connected to Minecraft server")
+        return mc
     except Exception as e:
-        print(f"Error connecting to Minecraft: {e}")
+        logger.error("Error connecting to Minecraft: %s", e)
         exit(1)
 
 def load_agents(mc, workspace) -> list:
@@ -29,7 +36,7 @@ def load_agents(mc, workspace) -> list:
         if isinstance(obj, BaseAgent):
             instances.append(obj)
 
-    print(f"Agents loaded: {instances}")
+    logger.info("Agents loaded: %s", instances)
     return instances
 
 async def read_chat_events(mc, workspace, instances, workflow):
@@ -37,7 +44,7 @@ async def read_chat_events(mc, workspace, instances, workflow):
     while True:
         chat_events = mc.events.pollChatPosts()
         for event in chat_events:
-            print(f"Chat event: {event}")
+            logger.debug("Chat event: %s", event)
             await parse_message(event.message, mc, workspace, instances, workflow)
         await asyncio.sleep(0.1)
 
@@ -55,10 +62,10 @@ async def main():
         if instance:
             await instance.start()
         else:
-            print(f"{agent} instance not found")
-        
+            logger.warning("%s instance not found", agent)
+
     chat_task = asyncio.create_task(read_chat_events(mc, workspace, instances, workflow))
-    print("Ready")
+    logger.info("Minecraft Agents Framework is ready")
 
     try:
         while True:
@@ -79,4 +86,4 @@ if __name__ == "__main__":
     try: 
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\nProgram interrupted by user")
+        logger.info("Program interrupted by user")

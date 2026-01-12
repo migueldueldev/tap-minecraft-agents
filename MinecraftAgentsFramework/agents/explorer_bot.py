@@ -124,7 +124,7 @@ class ExplorerBot(BaseAgent):
 
         if message:
             self.workspace.post_message(message)
-            print(json.dumps(message, indent=4))
+            self.logger.debug("Map message posted with %d regions", len(self.stable_regions) if self.stable_regions else 0)
         return message
     
     def handle_command(self, command):
@@ -207,7 +207,7 @@ class ExplorerBot(BaseAgent):
                         for (x, _, z), b in region['blocks'].items():
                             self.mc.setBlock(x, y - 1, z, b.id, b.data)
                 except Exception as e:
-                    print(f"Error restoring original region blocks: {e}")
+                    self.logger.error("Error restoring original region blocks: %s", e)
             self.displayed_regions.clear()
 
     def update_visualization(self):
@@ -382,6 +382,24 @@ class ExplorerBot(BaseAgent):
         """Build a mapping of block IDs to their names."""
         return {b.id: name for name, b in block.__dict__.items() if hasattr(b, "id")}
     
+    def help(self):
+        """Display available commands for the Explorer agent."""
+        help_message = [
+            f"Agent {self.__class__.__name__} help commands:",
+            "  ./explorer start x=<int> z=<int> [range=<int>]      - Start exploration",
+            "  ./explorer set range <int>                          - Update scan range",
+            "  ./explorer toggle display <seconds>                 - Toggle region display",
+            "  ./explorer confirm                                  - Confirm pending scan",
+            "  ./explorer queue                                    - Queue pending scan",
+            "  ./explorer pause                                    - Pause exploration",
+            "  ./explorer resume                                   - Resume exploration",
+            "  ./explorer stop                                     - Stop agent",
+            "  ./explorer status                                   - Show status",
+        ]
+        for line in help_message:
+            self.mc.postToChat(line)
+        self.logger.debug("Help text displayed")
+
     def scan_chunk(self, coords, results, lock):
         """Scan a chunk of coordinates in a separate thread."""
         try:
@@ -395,7 +413,7 @@ class ExplorerBot(BaseAgent):
             with lock:
                 results.append((chunk_heights, chunk_blocks))
         except Exception as e:
-            print(f"Chunk area scanning error: {e}")
+            self.logger.error("Chunk area scanning error: %s", e)
             with lock:
                 results.append(({}, {}))
 

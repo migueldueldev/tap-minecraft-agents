@@ -91,10 +91,10 @@ class MinerBot(BaseAgent):
                 
                 strategies[strategy_name] = subclass
                 strategies[strategy_name.replace("search", "")] = subclass # Alias
-                print(f"MinerBot: Loaded strategy '{strategy_name}'")
+                self.logger.debug("Loaded strategy: %s", strategy_name)
             except Exception as e:
-                print(f"MinerBot: Error registering strategy {subclass.__name__}: {e}")
-        
+                self.logger.error("Error registering strategy %s: %s", subclass.__name__, e)
+
         return strategies
 
     async def perceive(self, **kwargs):
@@ -170,7 +170,7 @@ class MinerBot(BaseAgent):
         
         if self.current_bom:
             if self.mining_strategy is None or not isinstance(self.mining_strategy, target_class):
-                print(f"MinerBot: Switching strategy to {target_class.__name__} (requested: {self.mining_strategy_name})")
+                self.logger.info("Switching strategy to %s (requested: %s)", target_class.__name__, self.mining_strategy_name)
                 self.mining_strategy = target_class(self.mc, self.__class__.__name__, self.workspace, agent=self)
                 
                 self.workspace.log_event(
@@ -484,6 +484,22 @@ class MinerBot(BaseAgent):
         )
         return message
     
+    def help(self):
+        """Display available commands for the Miner agent."""
+        help_message = [
+            f"Agent {self.__class__.__name__} help commands:",
+            "  ./miner start [x=<int> z=<int> y=<int>]               - Start mining",
+            "  ./miner set strategy <vertical|grid|vein>             - Set strategy",
+            "  ./miner fulfill                                       - Auto-fill inventory",
+            "  ./miner pause                                         - Pause mining",
+            "  ./miner resume                                        - Resume mining",
+            "  ./miner stop                                          - Stop agent",
+            "  ./miner status                                        - Show status",
+        ]
+        for line in help_message:
+            self.mc.postToChat(line)
+        self.logger.debug("Help text displayed")
+
     def set_state(self, new_state: AgentState, reason: str = None):
         """Update agent state and release mining locks on stop or error."""
         old_state = self.state
